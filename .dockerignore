@@ -1,0 +1,9 @@
+.git
+.github
+.worktrees
+docs
+scripts
+testdata
+internal/containertest
+*.md
+oasrelay
