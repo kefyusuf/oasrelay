@@ -98,7 +98,7 @@ func toolDescription(operation oasopenapi.SelectedOperation) string {
 	case description != "":
 		return description
 	default:
-		return fmt.Sprintf("Call %s %s", operation.Method, operation.Path)
+		return fmt.Sprintf("%s %s", operation.Method, operation.Path)
 	}
 }
 
