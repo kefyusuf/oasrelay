@@ -1,7 +1,7 @@
 # OASRelay OpenAPI Inspect — Design
 
 **Date:** 2026-09-02  
-**Status:** Approved baseline  
+**Status:** Proposed baseline  
 **Related issue:** #1
 
 ## Context
@@ -38,6 +38,7 @@ This slice does not implement:
 - Execution of any OpenAPI operation
 - Authentication
 - Remote OpenAPI URLs
+- External `$ref` documents, whether local files or URLs
 - Docker packaging
 - Configuration files
 - Code generation
@@ -90,6 +91,7 @@ The command writes a concise diagnostic to standard error and exits non-zero whe
 - The input is not valid YAML or JSON
 - The document is not a valid OpenAPI document
 - The OpenAPI version is not 3.x
+- The document references an external file or URL
 
 Diagnostics must contain enough context to identify the file and failure without exposing stack traces during normal CLI use.
 
@@ -114,13 +116,15 @@ Proposed repository structure:
 ```text
 cmd/
 └── oasrelay/
-    └── main.go
+    ├── main.go
+    └── main_test.go
 internal/
 └── openapi/
     ├── inspect.go
     └── inspect_test.go
 testdata/
 ├── customer-api.yaml
+├── customer-api.json
 ├── missing-operation-id.yaml
 └── invalid-openapi.yaml
 go.mod
@@ -155,15 +159,16 @@ A missing `operationId` is represented as an empty string. Presentation decides 
 The inspector:
 
 1. Accepts a filesystem path.
-2. Reads only that local file.
+2. Reads only the selected local document.
 3. Parses YAML or JSON based on content rather than filename alone.
-4. Resolves document references supported by the selected OpenAPI parser.
-5. Validates the resulting OpenAPI document.
-6. Rejects non-3.x specifications.
-7. Extracts only `GET` operations.
-8. Sorts operations by path, then by operation ID for deterministic output.
+4. Resolves internal JSON Pointer references such as `#/components/schemas/Customer`.
+5. Rejects external `$ref` targets instead of reading another file or using the network.
+6. Validates the resulting OpenAPI document.
+7. Rejects non-3.x specifications.
+8. Extracts only `GET` operations.
+9. Sorts operations by path, then by operation ID for deterministic output.
 
-External network access is not part of this slice. A local document that depends on unresolved remote references must fail clearly rather than fetching them implicitly.
+External network access and secondary file reads are not part of this slice.
 
 ## Error handling
 
@@ -173,6 +178,7 @@ Domain-facing errors are wrapped with operation context, for example:
 inspect ./openapi.yaml: read document: permission denied
 inspect ./openapi.yaml: validate document: path /customers has an invalid parameter
 inspect ./swagger.yaml: unsupported specification version "2.0"
+inspect ./openapi.yaml: external reference "./schemas/customer.yaml" is not supported
 ```
 
 The package returns errors; only `cmd/oasrelay` decides the exit code and writes to standard error.
@@ -187,6 +193,7 @@ Tests cover the observable behavior at two levels.
 - Valid JSON document
 - Invalid document
 - Unsupported OpenAPI version
+- External reference rejection
 - Multiple paths returned in deterministic order
 - Missing `operationId` preserved as an empty value
 - First server URL extracted when present
@@ -197,6 +204,7 @@ Tests cover the observable behavior at two levels.
 The command entry point is structured so success and failure behavior can be exercised without calling `os.Exit` from testable logic. Tests verify:
 
 - Missing arguments fail
+- Unreadable paths fail with a contextual error
 - Valid input produces the expected report
 - Invalid input writes an error and returns non-zero
 
