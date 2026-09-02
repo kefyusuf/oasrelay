@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
 
 permissions:
@@ -13,18 +15,18 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
           go-version: "1.25.x"
-          cache: false
-      - name: Resolve dependencies
-        run: go mod tidy
-      - name: Show resolved module files
+          cache: true
+
+      - name: Check module files
         run: |
-          cat go.mod
-          echo "--- go.sum ---"
-          cat go.sum
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
       - name: Check formatting
         run: |
           unformatted="$(find cmd internal -name '*.go' -type f -print0 | xargs -0 gofmt -l)"
@@ -32,11 +34,12 @@ jobs:
             printf 'Unformatted Go files:\n%s\n' "$unformatted"
             exit 1
           fi
+
       - name: Run tests
         run: go test ./...
+
       - name: Run vet
         run: go vet ./...
+
       - name: Smoke test inspect command
         run: go run ./cmd/oasrelay inspect ./testdata/customer-api.yaml
-      - name: Check module files are tidy
-        run: git diff --exit-code -- go.mod go.sum
