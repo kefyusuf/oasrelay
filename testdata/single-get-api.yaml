@@ -1,0 +1,106 @@
+openapi: 3.0.3
+info:
+  title: Single Tool API
+  version: 1.0.0
+servers:
+  - url: https://document.example.test/api
+paths:
+  /customers:
+    get:
+      operationId: listCustomers
+      summary: List customers
+      description: Returns the current customer collection.
+      responses:
+        "200":
+          description: Customer list
+    post:
+      operationId: createCustomer
+      responses:
+        "201":
+          description: Customer created
+  /path-scoped:
+    servers:
+      - url: https://path.example.test/v1
+    get:
+      operationId: pathScoped
+      responses:
+        "200":
+          description: Path-scoped response
+  /operation-scoped:
+    servers:
+      - url: https://ignored-path.example.test/v1
+    get:
+      operationId: operationScoped
+      servers:
+        - url: https://operation.example.test/v2
+      responses:
+        "200":
+          description: Operation-scoped response
+  /customers/{customerId}:
+    get:
+      operationId: getCustomer
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Customer
+  /filtered:
+    parameters:
+      - name: locale
+        in: query
+        schema:
+          type: string
+    get:
+      operationId: listFiltered
+      responses:
+        "200":
+          description: Filtered list
+  /with-body:
+    get:
+      operationId: getWithBody
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Response
+  /relative:
+    get:
+      operationId: relativeServer
+      servers:
+        - url: /relative-api
+      responses:
+        "200":
+          description: Response
+  /variable:
+    get:
+      operationId: variableServer
+      servers:
+        - url: https://{tenant}.example.test/api
+          variables:
+            tenant:
+              default: demo
+      responses:
+        "200":
+          description: Response
+  /unsupported-scheme:
+    get:
+      operationId: ftpServer
+      servers:
+        - url: ftp://example.test/api
+      responses:
+        "200":
+          description: Response
+  /invalid-tool-name:
+    get:
+      operationId: invalid tool
+      responses:
+        "200":
+          description: Response
