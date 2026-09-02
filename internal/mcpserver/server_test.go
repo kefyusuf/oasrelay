@@ -190,7 +190,7 @@ func TestToolDescription(t *testing.T) {
 		{
 			name:      "fallback",
 			operation: oasopenapi.SelectedOperation{Method: http.MethodGet, Path: "/health"},
-			want:      "Call GET /health",
+			want:      "GET /health",
 		},
 	}
 
