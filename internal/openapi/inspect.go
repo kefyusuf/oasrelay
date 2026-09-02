@@ -1,11 +1,6 @@
 package openapi
 
-import (
-	"fmt"
-	"sort"
-
-	"github.com/getkin/kin-openapi/openapi3"
-)
+import "sort"
 
 // Inspection is the small, project-owned view of an OpenAPI document that the
 // CLI needs. It deliberately does not expose kin-openapi types.
@@ -27,21 +22,9 @@ type Operation struct {
 // InspectFile loads and validates one local OpenAPI document, then returns its
 // metadata and GET operations. External references remain disabled.
 func InspectFile(path string) (Inspection, error) {
-	loader := openapi3.NewLoader()
-	loader.IsExternalRefsAllowed = false
-
-	document, err := loader.LoadFromFile(path)
+	document, err := loadDocument(path)
 	if err != nil {
-		return Inspection{}, fmt.Errorf("load document: %w", err)
-	}
-	if document.OpenAPIMajorMinor() == "" {
-		return Inspection{}, fmt.Errorf(
-			"unsupported OpenAPI version %q: expected a supported 3.x version",
-			document.OpenAPI,
-		)
-	}
-	if err := document.Validate(loader.Context); err != nil {
-		return Inspection{}, fmt.Errorf("validate document: %w", err)
+		return Inspection{}, err
 	}
 
 	result := Inspection{
