@@ -1,158 +1,57 @@
 # OpenAPI Inspect Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Implement each task test-first and keep Issue #1 as the complete scope boundary.
-
+**Status:** Completed in pull request #2; not merged  
 **Goal:** Build `oasrelay inspect <local-spec-path>` so a local OpenAPI document can be validated and its `GET` operations listed deterministically.
 
 **Architecture:** `internal/openapi` owns local loading, version checks, validation, and discovery. `cmd/oasrelay` owns argument handling, report formatting, diagnostics, and exit codes. The CLI consumes only project-owned result types.
 
-**Tech Stack:** Go 1.25+, Go standard library, `github.com/getkin/kin-openapi` v0.149.0.
+**Tech stack:** Go 1.25+, Go standard library, `github.com/getkin/kin-openapi` v0.149.0.  
+**Design:** `docs/superpowers/specs/2026-09-02-openapi-inspect-design.md`
 
-**Spec:** `docs/superpowers/specs/2026-09-02-openapi-inspect-design.md`
+## Locked scope
 
-## Global constraints
-
-- Implement only the `inspect` command in Issue #1.
 - Read one local YAML or JSON file supplied as a positional argument.
-- Accept OpenAPI 3.x versions supported by `kin-openapi` v0.149.0; reject other versions.
-- Allow internal document references but keep external file and URL `$ref` resolution disabled.
-- Discover only `GET` operations; do not execute requests.
+- Accept OpenAPI 3.x versions supported by `kin-openapi` v0.149.0.
+- Allow internal document references; reject external file and URL `$ref` values.
+- Discover only `GET` operations; never execute requests.
 - Sort operations by path, then `operationId`.
-- Preserve a missing `operationId` as an empty string and render its warning in the CLI layer.
-- Use standard-library CLI parsing; do not add a command framework.
-- Return concise errors without stack traces.
+- Preserve missing `operationId` values and render their warnings in the CLI layer.
+- Use the standard library for CLI dispatch.
 - Do not add MCP, authentication, Docker, configuration, persistence, UI, policy, generation, or SaaS code.
 
-## File map
+## Completed tasks
 
-- `go.mod`, `go.sum`: module and dependency metadata.
-- `internal/openapi/inspect.go`: inspection result types and `InspectFile`.
-- `internal/openapi/inspect_test.go`: loading, validation, ordering, reference, and error tests.
-- `cmd/oasrelay/main.go`: entry point, dispatch, formatting, and exit codes.
-- `cmd/oasrelay/main_test.go`: CLI behavior tests without subprocesses.
-- `testdata/*.yaml`, `testdata/*.json`: valid and invalid fixtures.
-- `README.md`: only the capability that actually exists.
+### 1. Define inspection behavior
 
----
+- [x] Declare the Go module and pin `kin-openapi` v0.149.0.
+- [x] Add YAML and JSON OpenAPI fixtures.
+- [x] Cover deterministic ordering and ignored non-GET operations.
+- [x] Cover internal references, missing `operationId`, and absent servers.
+- [x] Cover malformed input, invalid documents, unsupported versions, unreadable paths, and external references.
+- [x] Record the initial RED test run before production symbols existed.
 
-### Task 1: Define inspection behavior with failing tests
+### 2. Implement the inspection package
 
-**Files:**
-- Create: `go.mod`
-- Create: `internal/openapi/inspect_test.go`
-- Create: `testdata/customer-api.yaml`
-- Create: `testdata/customer-api.json`
-- Create: `testdata/missing-operation-id.yaml`
-- Create: `testdata/invalid-openapi.yaml`
-- Create: `testdata/unsupported-version.yaml`
+- [x] Add project-owned `Inspection` and `Operation` result types.
+- [x] Implement `InspectFile` using a loader with external references disabled.
+- [x] Validate the document before extracting metadata and operations.
+- [x] Wrap load and validation errors with stable operation context.
+- [x] Run package tests successfully.
 
-**Interfaces produced by the later implementation:**
+### 3. Implement the CLI
 
-```go
-type Inspection struct {
-    OpenAPIVersion string
-    Title          string
-    APIVersion     string
-    ServerURL      string
-    Operations     []Operation
-}
+- [x] Test exact report output, missing IDs, usage errors, and operational errors.
+- [x] Implement `main`, `run`, and `writeInspection` without a CLI framework.
+- [x] Use exit code `2` for usage failures and `1` for document failures.
+- [x] Verify the command lists only the two expected `GET` operations.
 
-type Operation struct {
-    OperationID string
-    Method      string
-    Path        string
-}
+### 4. Document and verify the slice
 
-func InspectFile(path string) (Inspection, error)
-```
-
-- [ ] Add `go.mod` with module `github.com/kefyusuf/oasrelay`, Go 1.25, and `kin-openapi` v0.149.0.
-- [ ] Add a YAML fixture containing two `GET` operations, one ignored `POST`, a first server URL, and an internal `#/components/...` reference.
-- [ ] Add a valid JSON OpenAPI 3.1 fixture.
-- [ ] Add fixtures for missing `operationId`, invalid OpenAPI 3 validation, and unsupported version.
-- [ ] Write tests for YAML metadata, JSON loading, deterministic sorting, ignored non-GET operations, internal references, missing `operationId`, absent server, invalid documents, unsupported versions, unreadable paths, and rejected external references.
-- [ ] Run `go test ./internal/openapi` and verify RED because `InspectFile`, `Inspection`, and `Operation` do not exist.
-
-### Task 2: Implement the inspection package
-
-**Files:**
-- Create: `internal/openapi/inspect.go`
-- Create: `go.sum`
-
-**Implementation contract:**
-
-```go
-func InspectFile(path string) (Inspection, error) {
-    loader := openapi3.NewLoader()
-    loader.IsExternalRefsAllowed = false
-    // LoadFromFile, reject unsupported version, Validate,
-    // extract metadata and GET operations, then sort.
-}
-```
-
-- [ ] Implement only the result types and `InspectFile` required by Task 1.
-- [ ] Wrap load errors with `load document` and validation errors with `validate document`.
-- [ ] Use `document.OpenAPIMajorMinor()` to reject unsupported versions before validation.
-- [ ] Resolve internal references through the loader while leaving external references disabled.
-- [ ] Run `gofmt`, `go mod tidy`, and `go test ./internal/openapi`; verify GREEN.
-- [ ] Commit as `feat: inspect local OpenAPI documents`.
-
-### Task 3: Define CLI behavior with failing tests
-
-**Files:**
-- Create: `cmd/oasrelay/main_test.go`
-
-**Interfaces produced by the later implementation:**
-
-```go
-func run(args []string, stdout, stderr io.Writer) int
-func writeInspection(w io.Writer, inspection openapi.Inspection)
-```
-
-- [ ] Test exact deterministic success output.
-- [ ] Test missing `operationId` rendering.
-- [ ] Test no arguments, missing inspect path, excess arguments, and unknown commands as exit code `2`.
-- [ ] Test invalid input as exit code `1`, with the path and operation context on standard error.
-- [ ] Run `go test ./cmd/oasrelay` and verify RED because `run` does not exist.
-
-### Task 4: Implement the CLI
-
-**Files:**
-- Create: `cmd/oasrelay/main.go`
-
-**CLI contract:**
-
-```text
-oasrelay inspect <local-spec-path>
-```
-
-- [ ] Implement `main`, `run`, and `writeInspection` with the standard library.
-- [ ] Use exit code `2` for usage errors and `1` for operational errors.
-- [ ] Print the server line only when a server exists.
-- [ ] Render `<missing operationId>` and its future-MCP warning without changing the package result.
-- [ ] Run `gofmt` and `go test ./...`; verify GREEN.
-- [ ] Run `go run ./cmd/oasrelay inspect ./testdata/customer-api.yaml` and confirm only the two `GET` operations appear.
-- [ ] Commit as `feat: add OpenAPI inspect command`.
-
-### Task 5: Document and verify the completed slice
-
-**Files:**
-- Create: `README.md`
-
-- [ ] State that the current version only inspects local OpenAPI 3.x documents and does not run an MCP server.
-- [ ] Document Go 1.25+, the inspect command, tests, implemented behavior, and explicit non-goals.
-- [ ] Run:
-
-```bash
-gofmt -w cmd/oasrelay/main.go cmd/oasrelay/main_test.go internal/openapi/inspect.go internal/openapi/inspect_test.go
-go test ./...
-go vet ./...
-go run ./cmd/oasrelay inspect ./testdata/customer-api.yaml
-```
-
-- [ ] Review the diff and reject any MCP, HTTP client, authentication, Docker, configuration, persistence, UI, policy, generation, or SaaS path.
-- [ ] Commit as `docs: explain initial inspect workflow`.
+- [x] Document only the implemented `inspect` capability and explicit non-goals.
+- [x] Add CI checks for tidy module files, formatting, tests, vet, and a CLI smoke run.
+- [x] Review the full diff for scope expansion and reject unrelated subsystems.
+- [x] Submit the implementation through pull request #2 without merging it automatically.
 
 ## Definition of done
 
-Issue #1 is complete only when the full verification sequence passes, the CLI output matches the fixtures, external references remain blocked, the diff contains only the stated slice, and the work is submitted through a pull request without merging it automatically.
+The slice is complete when the CI verification is green, output matches the fixtures, external references remain blocked, the diff remains within Issue #1, and pull request #2 is ready for human merge review.
