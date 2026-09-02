@@ -43,3 +43,19 @@ jobs:
 
       - name: Smoke test inspect command
         run: go run ./cmd/oasrelay inspect ./testdata/customer-api.yaml
+
+  docker-acceptance:
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.25.x"
+          cache: true
+
+      - name: Build and test the Docker stdio runtime
+        run: ./scripts/test-docker.sh
