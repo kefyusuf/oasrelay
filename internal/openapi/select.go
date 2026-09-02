@@ -101,8 +101,8 @@ func effectiveServer(
 	item *openapi3.PathItem,
 	operation *openapi3.Operation,
 ) *openapi3.Server {
-	if len(operation.Servers) > 0 {
-		return operation.Servers[0]
+	if operation.Servers != nil && len(*operation.Servers) > 0 {
+		return (*operation.Servers)[0]
 	}
 	if len(item.Servers) > 0 {
 		return item.Servers[0]
