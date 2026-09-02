@@ -7,11 +7,13 @@ The current scope is intentionally narrow:
 - inspect one local OpenAPI 3.x YAML or JSON document;
 - select one parameterless `GET` operation by its exact `operationId`;
 - expose that operation as exactly one MCP tool over stdio;
-- execute one bounded upstream HTTP request when the tool is called.
+- execute one bounded upstream HTTP request when the tool is called;
+- run the same stdio runtime directly or in a minimal non-root Docker image.
 
 ## Requirements
 
-- Go 1.25 or newer
+- Go 1.25 or newer for source builds and development
+- Docker for the container runtime and Docker acceptance test
 
 ## Build
 
@@ -111,9 +113,38 @@ Runtime limits are fixed in this slice:
 
 A non-2xx HTTP response preserves `status`, `contentType`, and `body`, while marking the MCP tool result as an error. Network, timeout, cancellation, response-read, and oversized-body failures are returned as tool execution errors.
 
+## Run with Docker
+
+Build the local image:
+
+```bash
+docker build -t oasrelay:local .
+```
+
+Mount the OpenAPI document read-only and keep stdin open for MCP protocol traffic:
+
+```bash
+docker run --rm -i \
+  --mount type=bind,src=/absolute/path/openapi.yaml,dst=/work/openapi.yaml,readonly \
+  oasrelay:local \
+  serve --operation-id listCustomers /work/openapi.yaml
+```
+
+Use an absolute host path for the bind mount. A stdio-capable MCP client should launch this command directly; stdout is reserved for newline-delimited MCP JSON messages and operational errors are written to stderr.
+
+The image:
+
+- uses a multi-stage Go 1.25 build;
+- produces a statically linked Linux binary with `CGO_ENABLED=0`;
+- uses `scratch` as the final image;
+- runs as numeric non-root user `65532:65532`;
+- includes CA certificates for HTTPS upstream APIs;
+- sets `/oasrelay` as the entrypoint and `/work` as the working directory;
+- contains no bundled OpenAPI documents, credentials, shell, or package manager.
+
 ## Development
 
-Run the verification commands:
+Run the standard verification commands:
 
 ```bash
 go mod tidy
@@ -122,7 +153,13 @@ go vet ./...
 go run ./cmd/oasrelay inspect ./testdata/customer-api.yaml
 ```
 
-The MCP integration tests use the official Go SDK's in-memory transports and a real local `httptest` upstream server.
+Run the Docker build and end-to-end stdio acceptance test:
+
+```bash
+./scripts/test-docker.sh
+```
+
+The in-process MCP tests use the official Go SDK's in-memory transports. The Docker acceptance test uses the SDK's `CommandTransport`, launches `docker run -i`, mounts a generated spec read-only, and calls a real host-side HTTP fixture through the container.
 
 ## Current scope boundary
 
@@ -136,7 +173,9 @@ Implemented:
 - exact selection of one supported `operationId`;
 - one stdio MCP tool;
 - one bounded upstream HTTP `GET` request;
-- structured success and non-2xx output.
+- structured success and non-2xx output;
+- minimal non-root Docker packaging;
+- container-level MCP stdio acceptance testing.
 
 Not implemented:
 
@@ -147,7 +186,8 @@ Not implemented:
 - Streamable HTTP transport;
 - remote OpenAPI loading;
 - base URL overrides;
-- Docker packaging;
+- Docker Compose or Kubernetes manifests;
+- published registry images or release automation;
 - configuration or policy systems;
 - code generation;
 - persistence, UI, tenancy, billing, or SaaS features.
