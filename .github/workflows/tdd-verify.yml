@@ -20,5 +20,11 @@ jobs:
         with:
           go-version: "1.25.x"
           cache: false
-      - name: Run tests
-        run: go test ./...
+      - name: Resolve dependencies
+        run: go mod tidy
+      - name: Show module checksums
+        run: cat go.sum
+      - name: Run OpenAPI package tests
+        run: go test ./internal/openapi
+      - name: Run CLI tests
+        run: go test ./cmd/oasrelay
