@@ -2,7 +2,10 @@ module github.com/kefyusuf/oasrelay
 
 go 1.25
 
-require github.com/getkin/kin-openapi v0.149.0
+require (
+	github.com/getkin/kin-openapi v0.149.0
+	github.com/modelcontextprotocol/go-sdk v1.7.0
+)
 
 require (
 	github.com/go-openapi/jsonpointer v0.22.5 // indirect

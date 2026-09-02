@@ -1,0 +1,32 @@
+name: MCP TDD checkpoint
+
+on:
+  push:
+    branches:
+      - feat/single-get-mcp-tool
+
+permissions:
+  contents: read
+
+jobs:
+  checkpoint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.25.x"
+          cache: false
+
+      - name: Resolve and show module metadata
+        run: |
+          go mod tidy
+          cat go.mod
+          echo "--- go.sum ---"
+          cat go.sum
+
+      - name: Run focused MCP tests
+        run: go test ./internal/mcpserver
