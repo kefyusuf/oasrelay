@@ -63,6 +63,13 @@ func TestInspectFilePreservesMissingOperationIDAndEmptyServer(t *testing.T) {
 	}
 }
 
+func TestInspectFileRejectsMalformedDocument(t *testing.T) {
+	_, err := InspectFile(fixturePath("malformed-openapi.yaml"))
+	if err == nil || !strings.Contains(err.Error(), "load document") {
+		t.Fatalf("error = %v, want parse/load context", err)
+	}
+}
+
 func TestInspectFileRejectsInvalidDocument(t *testing.T) {
 	_, err := InspectFile(fixturePath("invalid-openapi.yaml"))
 	if err == nil || !strings.Contains(err.Error(), "validate document") {
