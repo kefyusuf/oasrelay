@@ -1,0 +1,34 @@
+openapi: 3.0.3
+info:
+  title: Customer API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+components:
+  schemas:
+    CustomerID:
+      type: string
+paths:
+  /customers/{customerId}:
+    get:
+      operationId: getCustomer
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/CustomerID"
+      responses:
+        "200":
+          description: Customer details
+  /customers:
+    get:
+      operationId: listCustomers
+      responses:
+        "200":
+          description: Customer list
+    post:
+      operationId: createCustomer
+      responses:
+        "201":
+          description: Customer created

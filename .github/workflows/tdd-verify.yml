@@ -1,0 +1,24 @@
+name: TDD verification
+
+on:
+  push:
+    branches:
+      - feat/openapi-inspect
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - name: Run tests
+        run: go test ./...
