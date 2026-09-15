@@ -9,20 +9,28 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
+// QueryParameter is the deliberately small query-parameter contract supported
+// by the one-tool MCP runtime.
+type QueryParameter struct {
+	Name string
+	Type string
+}
+
 // SelectedOperation is the validated project-owned operation required by the
 // one-tool MCP runtime.
 type SelectedOperation struct {
-	OperationID string
-	Method      string
-	Path        string
-	Summary     string
-	Description string
-	Endpoint    string
+	OperationID    string
+	Method         string
+	Path           string
+	Summary        string
+	Description    string
+	Endpoint       string
+	QueryParameter *QueryParameter
 }
 
 // SelectParameterlessGET loads one local document and selects the exact
-// operationId when it represents the deliberately restricted GET shape
-// supported by the first MCP runtime slice.
+// operationId when it represents the deliberately restricted parameterless GET
+// shape supported by the original MCP runtime slice.
 func SelectParameterlessGET(path, operationID string) (SelectedOperation, error) {
 	document, err := loadDocument(path)
 	if err != nil {
@@ -39,6 +47,32 @@ func SelectParameterlessGET(path, operationID string) (SelectedOperation, error)
 					continue
 				}
 				return selectOperation(document, route, method, item, operation)
+			}
+		}
+	}
+
+	return SelectedOperation{}, fmt.Errorf("operationId %q was not found", operationID)
+}
+
+// SelectGET loads one local document and selects the exact operationId when it
+// represents either a parameterless GET or a GET with exactly one supported
+// required operation-level query parameter.
+func SelectGET(path, operationID string) (SelectedOperation, error) {
+	document, err := loadDocument(path)
+	if err != nil {
+		return SelectedOperation{}, err
+	}
+
+	if document.Paths != nil {
+		for route, item := range document.Paths.Map() {
+			if item == nil {
+				continue
+			}
+			for method, operation := range item.Operations() {
+				if operation == nil || operation.OperationID != operationID {
+					continue
+				}
+				return selectGETOperation(document, route, method, item, operation)
 			}
 		}
 	}
@@ -73,6 +107,146 @@ func selectOperation(
 			operationID,
 		)
 	}
+
+	return buildSelectedOperation(document, route, method, item, operation, nil)
+}
+
+func selectGETOperation(
+	document *openapi3.T,
+	route, method string,
+	item *openapi3.PathItem,
+	operation *openapi3.Operation,
+) (SelectedOperation, error) {
+	operationID := operation.OperationID
+
+	if method != http.MethodGet {
+		return SelectedOperation{}, fmt.Errorf(
+			"operationId %q uses %s; this version supports GET only",
+			operationID,
+			method,
+		)
+	}
+	if len(item.Parameters) != 0 {
+		return SelectedOperation{}, fmt.Errorf(
+			"operationId %q has path-level parameters; this version does not support path-level parameters",
+			operationID,
+		)
+	}
+	if len(operation.Parameters) > 1 {
+		return SelectedOperation{}, fmt.Errorf(
+			"operationId %q has %d operation parameters; this version supports at most one operation-level parameter",
+			operationID,
+			len(operation.Parameters),
+		)
+	}
+	if operation.RequestBody != nil {
+		return SelectedOperation{}, fmt.Errorf(
+			"operationId %q has a request body; this version does not support request bodies",
+			operationID,
+		)
+	}
+
+	queryParameter, err := supportedQueryParameter(operationID, operation.Parameters)
+	if err != nil {
+		return SelectedOperation{}, err
+	}
+	return buildSelectedOperation(document, route, method, item, operation, queryParameter)
+}
+
+func supportedQueryParameter(operationID string, parameters openapi3.Parameters) (*QueryParameter, error) {
+	if len(parameters) == 0 {
+		return nil, nil
+	}
+
+	parameterRef := parameters[0]
+	if parameterRef == nil || parameterRef.Value == nil {
+		return nil, fmt.Errorf(
+			"operationId %q has an unresolved parameter; this version requires a resolved query parameter",
+			operationID,
+		)
+	}
+	parameter := parameterRef.Value
+	if parameter.In != openapi3.ParameterInQuery {
+		return nil, fmt.Errorf(
+			"operationId %q parameter %q is in %s; this version supports query parameters only",
+			operationID,
+			parameter.Name,
+			parameter.In,
+		)
+	}
+	if !parameter.Required {
+		return nil, fmt.Errorf(
+			"operationId %q query parameter %q must be required",
+			operationID,
+			parameter.Name,
+		)
+	}
+
+	serialization, err := parameter.SerializationMethod()
+	if err != nil {
+		return nil, fmt.Errorf("operationId %q query parameter %q: %w", operationID, parameter.Name, err)
+	}
+	if serialization.Style != "form" || !serialization.Explode || parameter.AllowReserved {
+		return nil, fmt.Errorf(
+			"operationId %q query parameter %q does not use default query serialization",
+			operationID,
+			parameter.Name,
+		)
+	}
+
+	if parameter.Schema == nil || parameter.Schema.Value == nil || !isPlainPrimitiveSchema(parameter.Schema.Value) {
+		return nil, fmt.Errorf(
+			"operationId %q query parameter %q must use a plain primitive schema",
+			operationID,
+			parameter.Name,
+		)
+	}
+
+	return &QueryParameter{
+		Name: parameter.Name,
+		Type: (*parameter.Schema.Value.Type)[0],
+	}, nil
+}
+
+func isPlainPrimitiveSchema(schema *openapi3.Schema) bool {
+	if schema == nil || schema.Type == nil || !schema.Type.IsSingle() {
+		return false
+	}
+
+	typeName := (*schema.Type)[0]
+	switch typeName {
+	case openapi3.TypeString, openapi3.TypeInteger, openapi3.TypeNumber, openapi3.TypeBoolean:
+	default:
+		return false
+	}
+
+	return len(schema.OneOf) == 0 &&
+		len(schema.AnyOf) == 0 &&
+		len(schema.AllOf) == 0 &&
+		schema.Not == nil &&
+		!schema.Nullable &&
+		len(schema.Enum) == 0 &&
+		schema.Default == nil &&
+		schema.Format == "" &&
+		schema.Min == nil &&
+		schema.Max == nil &&
+		schema.MultipleOf == nil &&
+		schema.MinLength == 0 &&
+		schema.MaxLength == nil &&
+		schema.Pattern == "" &&
+		schema.Items == nil &&
+		len(schema.Properties) == 0 &&
+		schema.Const == nil
+}
+
+func buildSelectedOperation(
+	document *openapi3.T,
+	route, method string,
+	item *openapi3.PathItem,
+	operation *openapi3.Operation,
+	queryParameter *QueryParameter,
+) (SelectedOperation, error) {
+	operationID := operation.OperationID
 	if err := validateMCPToolName(operationID); err != nil {
 		return SelectedOperation{}, fmt.Errorf(
 			"operationId %q is not a valid MCP tool name: %w",
@@ -87,12 +261,13 @@ func selectOperation(
 	}
 
 	return SelectedOperation{
-		OperationID: operationID,
-		Method:      http.MethodGet,
-		Path:        route,
-		Summary:     operation.Summary,
-		Description: operation.Description,
-		Endpoint:    endpoint,
+		OperationID:    operationID,
+		Method:         http.MethodGet,
+		Path:           route,
+		Summary:        operation.Summary,
+		Description:    operation.Description,
+		Endpoint:       endpoint,
+		QueryParameter: queryParameter,
 	}, nil
 }
 
