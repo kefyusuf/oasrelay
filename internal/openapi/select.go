@@ -230,6 +230,8 @@ func isPlainPrimitiveSchema(schema *openapi3.Schema) bool {
 		schema.Format == "" &&
 		schema.Min == nil &&
 		schema.Max == nil &&
+		!hasExclusiveBound(schema.ExclusiveMin) &&
+		!hasExclusiveBound(schema.ExclusiveMax) &&
 		schema.MultipleOf == nil &&
 		schema.MinLength == 0 &&
 		schema.MaxLength == nil &&
@@ -237,6 +239,10 @@ func isPlainPrimitiveSchema(schema *openapi3.Schema) bool {
 		schema.Items == nil &&
 		len(schema.Properties) == 0 &&
 		schema.Const == nil
+}
+
+func hasExclusiveBound(bound openapi3.ExclusiveBound) bool {
+	return bound.Value != nil || bound.Bool != nil && *bound.Bool
 }
 
 func buildSelectedOperation(
