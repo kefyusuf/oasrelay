@@ -2,8 +2,10 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	oasopenapi "github.com/kefyusuf/oasrelay/internal/openapi"
@@ -15,10 +17,6 @@ const (
 	implementationName    = "oasrelay"
 	implementationVersion = "0.0.0-dev"
 )
-
-// ToolInput is the intentionally empty argument object for the first supported
-// parameterless OpenAPI operation shape.
-type ToolInput struct{}
 
 // ToolOutput is the bounded raw HTTP response returned by the MCP tool.
 type ToolOutput struct {
@@ -50,13 +48,19 @@ func New(operation oasopenapi.SelectedOperation, client *http.Client) (*mcp.Serv
 		&mcp.Tool{
 			Name:        operation.OperationID,
 			Description: toolDescription(operation),
+			InputSchema: toolInputSchema(operation),
 		},
 		func(
 			ctx context.Context,
 			_ *mcp.CallToolRequest,
-			_ ToolInput,
+			input map[string]json.RawMessage,
 		) (*mcp.CallToolResult, ToolOutput, error) {
-			response, err := upstream.Get(ctx, client, operation.Endpoint)
+			endpoint, err := bindQueryParameter(operation.Endpoint, operation.QueryParameter, input)
+			if err != nil {
+				return nil, ToolOutput{}, err
+			}
+
+			response, err := upstream.Get(ctx, client, endpoint)
 			if err != nil {
 				return nil, ToolOutput{}, err
 			}
@@ -84,6 +88,87 @@ func RunStdio(ctx context.Context, operation oasopenapi.SelectedOperation) error
 		return err
 	}
 	return server.Run(ctx, &mcp.StdioTransport{})
+}
+
+func toolInputSchema(operation oasopenapi.SelectedOperation) map[string]any {
+	schema := map[string]any{
+		"type":                 "object",
+		"properties":           map[string]any{},
+		"additionalProperties": false,
+	}
+	if operation.QueryParameter == nil {
+		return schema
+	}
+
+	parameter := operation.QueryParameter
+	schema["properties"] = map[string]any{
+		parameter.Name: map[string]any{"type": parameter.Type},
+	}
+	schema["required"] = []string{parameter.Name}
+	return schema
+}
+
+func bindQueryParameter(
+	endpoint string,
+	parameter *oasopenapi.QueryParameter,
+	input map[string]json.RawMessage,
+) (string, error) {
+	if parameter == nil {
+		if len(input) != 0 {
+			return "", fmt.Errorf("parameterless tool does not accept arguments")
+		}
+		return endpoint, nil
+	}
+
+	if len(input) != 1 {
+		return "", fmt.Errorf("tool requires exactly query parameter %q", parameter.Name)
+	}
+	raw, ok := input[parameter.Name]
+	if !ok {
+		return "", fmt.Errorf("required query parameter %q is missing", parameter.Name)
+	}
+
+	value, err := primitiveQueryValue(parameter.Type, raw)
+	if err != nil {
+		return "", fmt.Errorf("query parameter %q: %w", parameter.Name, err)
+	}
+
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return "", fmt.Errorf("parse endpoint: %w", err)
+	}
+	query := parsed.Query()
+	query.Set(parameter.Name, value)
+	parsed.RawQuery = query.Encode()
+	return parsed.String(), nil
+}
+
+func primitiveQueryValue(parameterType string, raw json.RawMessage) (string, error) {
+	switch parameterType {
+	case "string":
+		var value string
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return "", fmt.Errorf("expected string: %w", err)
+		}
+		return value, nil
+	case "boolean":
+		var value bool
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return "", fmt.Errorf("expected boolean: %w", err)
+		}
+		if value {
+			return "true", nil
+		}
+		return "false", nil
+	case "integer", "number":
+		var value json.Number
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return "", fmt.Errorf("expected number: %w", err)
+		}
+		return value.String(), nil
+	default:
+		return "", fmt.Errorf("unsupported primitive type %q", parameterType)
+	}
 }
 
 func toolDescription(operation oasopenapi.SelectedOperation) string {
