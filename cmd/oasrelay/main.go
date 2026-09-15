@@ -84,7 +84,7 @@ func runServe(args []string, stderr io.Writer, serve serveFunc) int {
 		return 2
 	}
 
-	operation, err := oasopenapi.SelectParameterlessGET(flags.Arg(0), operationID)
+	operation, err := oasopenapi.SelectGET(flags.Arg(0), operationID)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: select operation: %v\n", err)
 		return 1
