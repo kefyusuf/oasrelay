@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/url"
 	"strings"
@@ -160,7 +161,17 @@ func primitiveQueryValue(parameterType string, raw json.RawMessage) (string, err
 			return "true", nil
 		}
 		return "false", nil
-	case "integer", "number":
+	case "integer":
+		var value json.Number
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return "", fmt.Errorf("expected integer: %w", err)
+		}
+		rational, ok := new(big.Rat).SetString(value.String())
+		if !ok || !rational.IsInt() {
+			return "", fmt.Errorf("expected integer")
+		}
+		return rational.Num().String(), nil
+	case "number":
 		var value json.Number
 		if err := json.Unmarshal(raw, &value); err != nil {
 			return "", fmt.Errorf("expected number: %w", err)
