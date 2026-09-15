@@ -86,6 +86,20 @@ func TestServerBindsPrimitiveQueryParameter(t *testing.T) {
 			wantEscape: "filter=a+b%26c",
 		},
 		{name: "integer", paramType: "integer", argument: 25, wantValue: "25", wantEscape: "filter=25"},
+		{
+			name:       "integer decimal token",
+			paramType:  "integer",
+			argument:   json.Number("25.0"),
+			wantValue:  "25",
+			wantEscape: "filter=25",
+		},
+		{
+			name:       "integer exponent token",
+			paramType:  "integer",
+			argument:   json.Number("25e0"),
+			wantValue:  "25",
+			wantEscape: "filter=25",
+		},
 		{name: "number", paramType: "number", argument: 1.25, wantValue: "1.25", wantEscape: "filter=1.25"},
 		{name: "boolean", paramType: "boolean", argument: true, wantValue: "true", wantEscape: "filter=true"},
 	}
