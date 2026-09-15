@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -145,6 +146,10 @@ func bindQueryParameter(
 }
 
 func primitiveQueryValue(parameterType string, raw json.RawMessage) (string, error) {
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return "", fmt.Errorf("expected non-null %s", parameterType)
+	}
+
 	switch parameterType {
 	case "string":
 		var value string
