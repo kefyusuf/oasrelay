@@ -2,8 +2,8 @@ package openapi
 
 import (
 	"fmt"
-	"testing"
 	"strings"
+	"testing"
 )
 
 func TestSelectGETAcceptsOneRequiredPrimitiveQueryParameter(t *testing.T) {
