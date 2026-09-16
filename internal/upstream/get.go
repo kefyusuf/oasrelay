@@ -18,11 +18,27 @@ type Response struct {
 	Body        string
 }
 
-// Get sends one context-aware HTTP GET request and reads at most one MiB of
-// response data. Non-2xx responses remain ordinary Response values so the MCP
-// layer can preserve their status and body while marking the tool result as an
-// error.
+// Get sends one unauthenticated context-aware HTTP GET request.
 func Get(ctx context.Context, client *http.Client, endpoint string) (Response, error) {
+	return get(ctx, client, endpoint, "")
+}
+
+// GetWithBearer sends one context-aware HTTP GET request with an optional
+// process-supplied Bearer token. Authenticated requests stop at redirects so the
+// Authorization header cannot be forwarded to a different location.
+func GetWithBearer(
+	ctx context.Context,
+	client *http.Client,
+	endpoint, token string,
+) (Response, error) {
+	return get(ctx, client, endpoint, token)
+}
+
+func get(
+	ctx context.Context,
+	client *http.Client,
+	endpoint, bearerToken string,
+) (Response, error) {
 	if client == nil {
 		return Response{}, fmt.Errorf("HTTP client is required")
 	}
@@ -31,8 +47,20 @@ func Get(ctx context.Context, client *http.Client, endpoint string) (Response, e
 	if err != nil {
 		return Response{}, fmt.Errorf("create GET request: %w", err)
 	}
+	if bearerToken != "" {
+		request.Header.Set("Authorization", "Bearer "+bearerToken)
+	}
 
-	response, err := client.Do(request)
+	requestClient := client
+	if bearerToken != "" {
+		clientCopy := *client
+		clientCopy.CheckRedirect = func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+		requestClient = &clientCopy
+	}
+
+	response, err := requestClient.Do(request)
 	if err != nil {
 		return Response{}, fmt.Errorf("execute GET request: %w", err)
 	}
