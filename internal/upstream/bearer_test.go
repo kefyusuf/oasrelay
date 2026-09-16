@@ -55,12 +55,23 @@ func TestWithBearerTokenTreatsEmptyAndWhitespaceOnlyAsUnset(t *testing.T) {
 }
 
 func TestWithBearerTokenRejectsLineBreaksWithoutEchoingSecret(t *testing.T) {
-	token := "top-secret\r\nX-Leak: yes"
-	_, err := WithBearerToken(http.DefaultClient, token)
-	if err == nil {
-		t.Fatal("WithBearerToken() error = nil, want rejection")
+	tests := []struct {
+		name  string
+		token string
+	}{
+		{name: "secret with CRLF", token: "top-secret\r\nX-Leak: yes"},
+		{name: "line breaks only", token: "\r\n"},
 	}
-	if strings.Contains(err.Error(), token) || strings.Contains(err.Error(), "top-secret") {
-		t.Fatalf("error %q leaked bearer token", err)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := WithBearerToken(http.DefaultClient, test.token)
+			if err == nil {
+				t.Fatal("WithBearerToken() error = nil, want rejection")
+			}
+			if strings.Contains(err.Error(), test.token) || strings.Contains(err.Error(), "top-secret") {
+				t.Fatalf("error %q leaked bearer token", err)
+			}
+		})
 	}
 }
