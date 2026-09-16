@@ -280,3 +280,82 @@ paths:
 		})
 	}
 }
+
+func TestSelectGETRejectsOpenAPI31ConditionalSchemaConstraints(t *testing.T) {
+	tests := []struct {
+		name       string
+		constraint string
+	}{
+		{
+			name: "if then",
+			constraint: `if:
+              minimum: 0
+            then:
+              maximum: 10`,
+		},
+		{
+			name: "else",
+			constraint: `else:
+              minimum: 0`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := writeSelectionSpec(t, fmt.Sprintf(`openapi: 3.1.0
+info:
+  title: Query API
+  version: 1.0.0
+servers:
+  - url: https://example.test
+paths:
+  /customers:
+    get:
+      operationId: listCustomers
+      parameters:
+        - name: limit
+          in: query
+          required: true
+          schema:
+            type: integer
+            %s
+      responses:
+        "200":
+          description: Customer collection
+`, test.constraint))
+
+			_, err := SelectGET(path, "listCustomers")
+			if err == nil || !strings.Contains(err.Error(), "plain primitive schema") {
+				t.Fatalf("error = %v, want plain primitive schema rejection", err)
+			}
+		})
+	}
+}
+
+func TestSelectGETRejectsBlankQueryParameterNameDuringDocumentValidation(t *testing.T) {
+	path := writeSelectionSpec(t, `openapi: 3.0.3
+info:
+  title: Query API
+  version: 1.0.0
+servers:
+  - url: https://example.test
+paths:
+  /customers:
+    get:
+      operationId: listCustomers
+      parameters:
+        - name: ""
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Customer collection
+`)
+
+	_, err := SelectGET(path, "listCustomers")
+	if err == nil || !strings.Contains(err.Error(), "parameter name can't be blank") {
+		t.Fatalf("error = %v, want blank parameter name validation error", err)
+	}
+}
