@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	oasopenapi "github.com/kefyusuf/oasrelay/internal/openapi"
@@ -18,6 +19,7 @@ import (
 const (
 	implementationName    = "oasrelay"
 	implementationVersion = "0.0.0-dev"
+	bearerTokenEnv        = "OASRELAY_BEARER_TOKEN"
 )
 
 // ToolOutput is the bounded raw HTTP response returned by the MCP tool.
@@ -27,8 +29,27 @@ type ToolOutput struct {
 	Body        string `json:"body" jsonschema:"raw HTTP response body"`
 }
 
-// New creates an MCP server that exposes exactly one upstream-backed tool.
+// New creates an unauthenticated MCP server that exposes exactly one
+// upstream-backed tool.
 func New(operation oasopenapi.SelectedOperation, client *http.Client) (*mcp.Server, error) {
+	return newServer(operation, client, "")
+}
+
+// NewWithBearerToken creates one MCP server whose upstream requests use the
+// supplied process-level Bearer token. The token is not part of the MCP schema.
+func NewWithBearerToken(
+	operation oasopenapi.SelectedOperation,
+	client *http.Client,
+	bearerToken string,
+) (*mcp.Server, error) {
+	return newServer(operation, client, bearerToken)
+}
+
+func newServer(
+	operation oasopenapi.SelectedOperation,
+	client *http.Client,
+	bearerToken string,
+) (*mcp.Server, error) {
 	if client == nil {
 		return nil, fmt.Errorf("HTTP client is required")
 	}
@@ -65,7 +86,7 @@ func New(operation oasopenapi.SelectedOperation, client *http.Client) (*mcp.Serv
 				return nil, ToolOutput{}, err
 			}
 
-			response, err := upstream.Get(ctx, client, endpoint)
+			response, err := upstream.GetWithBearer(ctx, client, endpoint, bearerToken)
 			if err != nil {
 				return nil, ToolOutput{}, err
 			}
@@ -88,7 +109,7 @@ func New(operation oasopenapi.SelectedOperation, client *http.Client) (*mcp.Serv
 // RunStdio runs the one-tool server on MCP's standard input/output transport.
 func RunStdio(ctx context.Context, operation oasopenapi.SelectedOperation) error {
 	client := &http.Client{Timeout: upstream.RequestTimeout}
-	server, err := New(operation, client)
+	server, err := NewWithBearerToken(operation, client, os.Getenv(bearerTokenEnv))
 	if err != nil {
 		return err
 	}
