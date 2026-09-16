@@ -22,11 +22,18 @@ import (
 )
 
 const expectedRuntimeUser = "65532:65532"
+const acceptanceBearerToken = "container-secret"
 
 type toolOutput struct {
 	Status      int    `json:"status"`
 	ContentType string `json:"contentType"`
 	Body        string `json:"body"`
+}
+
+type observedRequest struct {
+	Method        string
+	Path          string
+	Authorization string
 }
 
 func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
@@ -38,7 +45,7 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 	assertImageUser(t, image)
 
 	var calls atomic.Int32
-	requests := make(chan string, 1)
+	requests := make(chan observedRequest, 1)
 	listener, err := net.Listen("tcp4", "0.0.0.0:0")
 	if err != nil {
 		t.Fatalf("listen for upstream fixture: %v", err)
@@ -47,7 +54,11 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 	upstream := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		calls.Add(1)
 		select {
-		case requests <- request.Method + " " + request.URL.Path:
+		case requests <- observedRequest{
+			Method:        request.Method,
+			Path:          request.URL.Path,
+			Authorization: request.Header.Get("Authorization"),
+		}:
 		default:
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -76,6 +87,8 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 		"-i",
 		"--add-host",
 		"host.docker.internal:host-gateway",
+		"-e",
+		"OASRELAY_BEARER_TOKEN="+acceptanceBearerToken,
 		"--mount",
 		mount,
 		image,
@@ -115,6 +128,15 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 	if len(listed.Tools) != 1 || listed.Tools[0].Name != "listCustomers" {
 		t.Fatalf("listed tools = %#v, want exactly listCustomers", listed.Tools)
 	}
+	encodedSchema, err := json.Marshal(listed.Tools[0].InputSchema)
+	if err != nil {
+		t.Fatalf("marshal container tool schema: %v", err)
+	}
+	if strings.Contains(string(encodedSchema), acceptanceBearerToken) ||
+		strings.Contains(string(encodedSchema), "OASRELAY_BEARER_TOKEN") ||
+		strings.Contains(string(encodedSchema), "Authorization") {
+		t.Fatalf("container tool schema exposes authentication details: %s", encodedSchema)
+	}
 
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "listCustomers",
@@ -139,8 +161,15 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 
 	select {
 	case request := <-requests:
-		if request != "GET /api/customers" {
-			t.Fatalf("upstream request = %q, want %q", request, "GET /api/customers")
+		if request.Method != http.MethodGet || request.Path != "/api/customers" {
+			t.Fatalf("upstream request = %#v, want GET /api/customers", request)
+		}
+		if request.Authorization != "Bearer "+acceptanceBearerToken {
+			t.Fatalf(
+				"upstream Authorization = %q, want %q",
+				request.Authorization,
+				"Bearer "+acceptanceBearerToken,
+			)
 		}
 	case <-ctx.Done():
 		t.Fatalf("upstream request was not observed: %v", ctx.Err())
