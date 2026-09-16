@@ -69,6 +69,8 @@ func TestServerBindsPrimitivePathParameter(t *testing.T) {
 		wantPathSegment string
 	}{
 		{name: "string with slash", parameterType: "string", argument: "a/b", wantPathSegment: "a%2Fb"},
+		{name: "dot segment", parameterType: "string", argument: ".", wantPathSegment: "%2E"},
+		{name: "parent dot segment", parameterType: "string", argument: "..", wantPathSegment: "%2E%2E"},
 		{name: "integer", parameterType: "integer", argument: json.Number("25.0"), wantPathSegment: "25"},
 		{name: "number", parameterType: "number", argument: 1.25, wantPathSegment: "1.25"},
 		{name: "boolean", parameterType: "boolean", argument: true, wantPathSegment: "true"},
