@@ -26,6 +26,26 @@ func WithBearerToken(client *http.Client, token string) (*http.Client, error) {
 		base = http.DefaultTransport
 	}
 	clone.Transport = bearerTransport{base: base, token: token}
+
+	originalCheckRedirect := clone.CheckRedirect
+	clone.CheckRedirect = func(request *http.Request, via []*http.Request) error {
+		if len(via) > 0 {
+			origin := via[0].URL
+			if !strings.EqualFold(request.URL.Scheme, origin.Scheme) ||
+				!strings.EqualFold(request.URL.Host, origin.Host) {
+				return http.ErrUseLastResponse
+			}
+		}
+
+		if originalCheckRedirect != nil {
+			return originalCheckRedirect(request, via)
+		}
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
+		}
+		return nil
+	}
+
 	return &clone, nil
 }
 
