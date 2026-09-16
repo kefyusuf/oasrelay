@@ -113,3 +113,36 @@ func TestWithBearerTokenDoesNotFollowCrossOriginRedirect(t *testing.T) {
 		t.Fatalf("cross-origin redirect target calls = %d, want 0", targetCalls.Load())
 	}
 }
+
+func TestWithBearerTokenFollowsSameOriginRedirect(t *testing.T) {
+	authorizations := make(chan string, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		authorizations <- request.Header.Get("Authorization")
+		if request.URL.Path == "/start" {
+			http.Redirect(w, request, "/final", http.StatusFound)
+			return
+		}
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer server.Close()
+
+	client, err := WithBearerToken(server.Client(), "secret-token")
+	if err != nil {
+		t.Fatalf("WithBearerToken() error = %v", err)
+	}
+
+	response, err := client.Get(server.URL + "/start")
+	if err != nil {
+		t.Fatalf("GET same-origin redirect: %v", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.StatusCode, http.StatusOK)
+	}
+	for index := 0; index < 2; index++ {
+		if got := <-authorizations; got != "Bearer secret-token" {
+			t.Fatalf("Authorization[%d] = %q, want bearer header", index, got)
+		}
+	}
+}
