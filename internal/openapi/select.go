@@ -238,7 +238,10 @@ func isPlainPrimitiveSchema(schema *openapi3.Schema) bool {
 		schema.Pattern == "" &&
 		schema.Items == nil &&
 		len(schema.Properties) == 0 &&
-		schema.Const == nil
+		schema.Const == nil &&
+		schema.If == nil &&
+		schema.Then == nil &&
+		schema.Else == nil
 }
 
 func hasExclusiveBound(bound openapi3.ExclusiveBound) bool {
