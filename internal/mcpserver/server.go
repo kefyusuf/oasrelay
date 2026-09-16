@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	oasopenapi "github.com/kefyusuf/oasrelay/internal/openapi"
@@ -16,8 +17,9 @@ import (
 )
 
 const (
-	implementationName    = "oasrelay"
-	implementationVersion = "0.0.0-dev"
+	implementationName              = "oasrelay"
+	implementationVersion           = "0.0.0-dev"
+	bearerTokenEnvironmentVariable  = "OASRELAY_BEARER_TOKEN"
 )
 
 // ToolOutput is the bounded raw HTTP response returned by the MCP tool.
@@ -87,12 +89,28 @@ func New(operation oasopenapi.SelectedOperation, client *http.Client) (*mcp.Serv
 
 // RunStdio runs the one-tool server on MCP's standard input/output transport.
 func RunStdio(ctx context.Context, operation oasopenapi.SelectedOperation) error {
-	client := &http.Client{Timeout: upstream.RequestTimeout}
+	client, err := runtimeHTTPClient(os.Getenv)
+	if err != nil {
+		return err
+	}
 	server, err := New(operation, client)
 	if err != nil {
 		return err
 	}
 	return server.Run(ctx, &mcp.StdioTransport{})
+}
+
+func runtimeHTTPClient(getenv func(string) string) (*http.Client, error) {
+	if getenv == nil {
+		return nil, fmt.Errorf("environment lookup is required")
+	}
+
+	client := &http.Client{Timeout: upstream.RequestTimeout}
+	client, err := upstream.WithBearerToken(client, getenv(bearerTokenEnvironmentVariable))
+	if err != nil {
+		return nil, fmt.Errorf("configure upstream bearer token: %w", err)
+	}
+	return client, nil
 }
 
 func toolInputSchema(operation oasopenapi.SelectedOperation) map[string]any {
