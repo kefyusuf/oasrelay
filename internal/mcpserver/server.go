@@ -17,10 +17,11 @@ import (
 )
 
 const (
-	implementationName              = "oasrelay"
-	implementationVersion           = "0.0.0-dev"
-	bearerTokenEnvironmentVariable  = "OASRELAY_BEARER_TOKEN"
+	implementationName    = "oasrelay"
+	implementationVersion = "0.0.0-dev"
 )
+
+const bearerTokenEnvironmentVariable = "OASRELAY_BEARER_TOKEN"
 
 // ToolOutput is the bounded raw HTTP response returned by the MCP tool.
 type ToolOutput struct {
