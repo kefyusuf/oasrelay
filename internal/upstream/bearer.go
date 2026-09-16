@@ -13,11 +13,11 @@ func WithBearerToken(client *http.Client, token string) (*http.Client, error) {
 	if client == nil {
 		return nil, fmt.Errorf("HTTP client is required")
 	}
-	if strings.TrimSpace(token) == "" {
-		return client, nil
-	}
 	if strings.ContainsAny(token, "\r\n") {
 		return nil, fmt.Errorf("bearer token contains a prohibited line break")
+	}
+	if strings.TrimSpace(token) == "" {
+		return client, nil
 	}
 
 	clone := *client
