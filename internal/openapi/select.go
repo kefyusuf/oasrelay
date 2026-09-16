@@ -289,6 +289,14 @@ func supportedPathParameter(
 			parameter.Name,
 		)
 	}
+	remainingRoute := strings.Replace(route, placeholder, "", 1)
+	if strings.ContainsAny(remainingRoute, "{}") {
+		return nil, fmt.Errorf(
+			"operationId %q path parameter %q route contains additional path placeholders; this version supports exactly one path placeholder",
+			operationID,
+			parameter.Name,
+		)
+	}
 
 	return &PathParameter{
 		Name: parameter.Name,
