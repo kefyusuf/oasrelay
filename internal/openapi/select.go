@@ -16,6 +16,13 @@ type QueryParameter struct {
 	Type string
 }
 
+// PathParameter is the deliberately small path-parameter contract supported
+// by the one-tool MCP runtime.
+type PathParameter struct {
+	Name string
+	Type string
+}
+
 // SelectedOperation is the validated project-owned operation required by the
 // one-tool MCP runtime.
 type SelectedOperation struct {
@@ -26,6 +33,7 @@ type SelectedOperation struct {
 	Description    string
 	Endpoint       string
 	QueryParameter *QueryParameter
+	PathParameter  *PathParameter
 }
 
 // SelectParameterlessGET loads one local document and selects the exact
@@ -55,8 +63,8 @@ func SelectParameterlessGET(path, operationID string) (SelectedOperation, error)
 }
 
 // SelectGET loads one local document and selects the exact operationId when it
-// represents either a parameterless GET or a GET with exactly one supported
-// required operation-level query parameter.
+// represents a parameterless GET or a GET with exactly one supported required
+// operation-level query or path parameter.
 func SelectGET(path, operationID string) (SelectedOperation, error) {
 	document, err := loadDocument(path)
 	if err != nil {
@@ -108,7 +116,7 @@ func selectOperation(
 		)
 	}
 
-	return buildSelectedOperation(document, route, method, item, operation, nil)
+	return buildSelectedOperation(document, route, method, item, operation, nil, nil)
 }
 
 func selectGETOperation(
@@ -146,11 +154,44 @@ func selectGETOperation(
 		)
 	}
 
-	queryParameter, err := supportedQueryParameter(operationID, operation.Parameters)
+	queryParameter, pathParameter, err := supportedOperationParameter(operationID, route, operation.Parameters)
 	if err != nil {
 		return SelectedOperation{}, err
 	}
-	return buildSelectedOperation(document, route, method, item, operation, queryParameter)
+	return buildSelectedOperation(document, route, method, item, operation, queryParameter, pathParameter)
+}
+
+func supportedOperationParameter(
+	operationID, route string,
+	parameters openapi3.Parameters,
+) (*QueryParameter, *PathParameter, error) {
+	if len(parameters) == 0 {
+		return nil, nil, nil
+	}
+
+	parameterRef := parameters[0]
+	if parameterRef == nil || parameterRef.Value == nil {
+		return nil, nil, fmt.Errorf(
+			"operationId %q has an unresolved parameter; this version requires a resolved operation parameter",
+			operationID,
+		)
+	}
+
+	switch parameterRef.Value.In {
+	case openapi3.ParameterInQuery:
+		parameter, err := supportedQueryParameter(operationID, parameters)
+		return parameter, nil, err
+	case openapi3.ParameterInPath:
+		parameter, err := supportedPathParameter(operationID, route, parameterRef.Value)
+		return nil, parameter, err
+	default:
+		return nil, nil, fmt.Errorf(
+			"operationId %q parameter %q is in %s; this version supports query parameters only for non-path parameters; the bounded path-parameter form is also supported",
+			operationID,
+			parameterRef.Value.Name,
+			parameterRef.Value.In,
+		)
+	}
 }
 
 func supportedQueryParameter(operationID string, parameters openapi3.Parameters) (*QueryParameter, error) {
@@ -208,6 +249,61 @@ func supportedQueryParameter(operationID string, parameters openapi3.Parameters)
 	}, nil
 }
 
+func supportedPathParameter(
+	operationID, route string,
+	parameter *openapi3.Parameter,
+) (*PathParameter, error) {
+	if !parameter.Required {
+		return nil, fmt.Errorf(
+			"operationId %q path parameter %q must be required",
+			operationID,
+			parameter.Name,
+		)
+	}
+
+	serialization, err := parameter.SerializationMethod()
+	if err != nil {
+		return nil, fmt.Errorf("operationId %q path parameter %q: %w", operationID, parameter.Name, err)
+	}
+	if serialization.Style != "simple" || serialization.Explode {
+		return nil, fmt.Errorf(
+			"operationId %q path parameter %q does not use default path serialization",
+			operationID,
+			parameter.Name,
+		)
+	}
+
+	if parameter.Schema == nil || parameter.Schema.Value == nil || !isPlainPrimitiveSchema(parameter.Schema.Value) {
+		return nil, fmt.Errorf(
+			"operationId %q path parameter %q must use a plain primitive schema",
+			operationID,
+			parameter.Name,
+		)
+	}
+
+	placeholder := "{" + parameter.Name + "}"
+	if strings.Count(route, placeholder) != 1 {
+		return nil, fmt.Errorf(
+			"operationId %q path parameter %q must match exactly one path placeholder",
+			operationID,
+			parameter.Name,
+		)
+	}
+	remainingRoute := strings.Replace(route, placeholder, "", 1)
+	if strings.ContainsAny(remainingRoute, "{}") {
+		return nil, fmt.Errorf(
+			"operationId %q path parameter %q route contains additional path placeholders; this version supports exactly one path placeholder",
+			operationID,
+			parameter.Name,
+		)
+	}
+
+	return &PathParameter{
+		Name: parameter.Name,
+		Type: (*parameter.Schema.Value.Type)[0],
+	}, nil
+}
+
 func isPlainPrimitiveSchema(schema *openapi3.Schema) bool {
 	if schema == nil || schema.Type == nil || !schema.Type.IsSingle() {
 		return false
@@ -254,6 +350,7 @@ func buildSelectedOperation(
 	item *openapi3.PathItem,
 	operation *openapi3.Operation,
 	queryParameter *QueryParameter,
+	pathParameter *PathParameter,
 ) (SelectedOperation, error) {
 	operationID := operation.OperationID
 	if err := validateMCPToolName(operationID); err != nil {
@@ -277,6 +374,7 @@ func buildSelectedOperation(
 		Description:    operation.Description,
 		Endpoint:       endpoint,
 		QueryParameter: queryParameter,
+		PathParameter:  pathParameter,
 	}, nil
 }
 

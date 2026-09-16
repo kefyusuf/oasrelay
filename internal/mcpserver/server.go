@@ -32,6 +32,9 @@ func New(operation oasopenapi.SelectedOperation, client *http.Client) (*mcp.Serv
 	if client == nil {
 		return nil, fmt.Errorf("HTTP client is required")
 	}
+	if operation.QueryParameter != nil && operation.PathParameter != nil {
+		return nil, fmt.Errorf("operation cannot expose query and path parameters together")
+	}
 	if err := validateMCPToolName(operation.OperationID); err != nil {
 		return nil, fmt.Errorf(
 			"operationId %q is not a valid MCP tool name: %w",
@@ -57,7 +60,7 @@ func New(operation oasopenapi.SelectedOperation, client *http.Client) (*mcp.Serv
 			_ *mcp.CallToolRequest,
 			input map[string]json.RawMessage,
 		) (*mcp.CallToolResult, ToolOutput, error) {
-			endpoint, err := bindQueryParameter(operation.Endpoint, operation.QueryParameter, input)
+			endpoint, err := bindOperationArguments(operation, input)
 			if err != nil {
 				return nil, ToolOutput{}, err
 			}
@@ -98,16 +101,37 @@ func toolInputSchema(operation oasopenapi.SelectedOperation) map[string]any {
 		"properties":           map[string]any{},
 		"additionalProperties": false,
 	}
-	if operation.QueryParameter == nil {
+
+	name, parameterType, ok := operationInputParameter(operation)
+	if !ok {
 		return schema
 	}
 
-	parameter := operation.QueryParameter
 	schema["properties"] = map[string]any{
-		parameter.Name: map[string]any{"type": parameter.Type},
+		name: map[string]any{"type": parameterType},
 	}
-	schema["required"] = []string{parameter.Name}
+	schema["required"] = []string{name}
 	return schema
+}
+
+func operationInputParameter(operation oasopenapi.SelectedOperation) (string, string, bool) {
+	if operation.QueryParameter != nil {
+		return operation.QueryParameter.Name, operation.QueryParameter.Type, true
+	}
+	if operation.PathParameter != nil {
+		return operation.PathParameter.Name, operation.PathParameter.Type, true
+	}
+	return "", "", false
+}
+
+func bindOperationArguments(
+	operation oasopenapi.SelectedOperation,
+	input map[string]json.RawMessage,
+) (string, error) {
+	if operation.PathParameter != nil {
+		return bindPathParameter(operation.Endpoint, operation.PathParameter, input)
+	}
+	return bindQueryParameter(operation.Endpoint, operation.QueryParameter, input)
 }
 
 func bindQueryParameter(
@@ -146,6 +170,56 @@ func bindQueryParameter(
 		parsed.RawQuery += "&" + encodedParameter
 	}
 	return parsed.String(), nil
+}
+
+func bindPathParameter(
+	endpoint string,
+	parameter *oasopenapi.PathParameter,
+	input map[string]json.RawMessage,
+) (string, error) {
+	if len(input) != 1 {
+		return "", fmt.Errorf("tool requires exactly path parameter %q", parameter.Name)
+	}
+	raw, ok := input[parameter.Name]
+	if !ok {
+		return "", fmt.Errorf("required path parameter %q is missing", parameter.Name)
+	}
+
+	value, err := primitiveQueryValue(parameter.Type, raw)
+	if err != nil {
+		return "", fmt.Errorf("path parameter %q: %w", parameter.Name, err)
+	}
+
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return "", fmt.Errorf("parse endpoint: %w", err)
+	}
+
+	placeholder := "{" + parameter.Name + "}"
+	if strings.Count(parsed.Path, placeholder) != 1 {
+		return "", fmt.Errorf("path parameter %q placeholder is missing from endpoint", parameter.Name)
+	}
+
+	escapedPath := parsed.EscapedPath()
+	escapedPlaceholder := url.PathEscape(placeholder)
+	if strings.Count(escapedPath, escapedPlaceholder) != 1 {
+		return "", fmt.Errorf("path parameter %q escaped placeholder is missing from endpoint", parameter.Name)
+	}
+
+	parsed.Path = strings.Replace(parsed.Path, placeholder, value, 1)
+	parsed.RawPath = strings.Replace(escapedPath, escapedPlaceholder, escapePathSegment(value), 1)
+	return parsed.String(), nil
+}
+
+func escapePathSegment(value string) string {
+	escaped := url.PathEscape(value)
+	if escaped == "." {
+		return "%2E"
+	}
+	if escaped == ".." {
+		return "%2E%2E"
+	}
+	return escaped
 }
 
 func primitiveQueryValue(parameterType string, raw json.RawMessage) (string, error) {
