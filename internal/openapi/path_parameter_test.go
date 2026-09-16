@@ -181,6 +181,34 @@ paths:
 	}
 }
 
+func TestSelectGETRejectsAdditionalPathPlaceholder(t *testing.T) {
+	path := writeSelectionSpec(t, `openapi: 3.0.3
+info:
+  title: Path API
+  version: 1.0.0
+servers:
+  - url: https://example.test
+paths:
+  /customers/{customerId}/related/{otherId}:
+    get:
+      operationId: getRelatedCustomer
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Related customer
+`)
+
+	_, err := SelectGET(path, "getRelatedCustomer")
+	if err == nil || !strings.Contains(err.Error(), "additional path placeholders") {
+		t.Fatalf("error = %v, want additional-placeholder rejection", err)
+	}
+}
+
 func TestSelectGETStillRejectsQueryAndPathCombination(t *testing.T) {
 	path := writeSelectionSpec(t, `openapi: 3.0.3
 info:
