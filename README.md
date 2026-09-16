@@ -9,6 +9,7 @@ The current scope is intentionally narrow:
 - support no parameters, one required primitive operation-level query parameter, or one required primitive operation-level path parameter;
 - expose that operation as exactly one MCP tool over stdio;
 - execute one bounded upstream HTTP request when the tool is called;
+- optionally attach one Bearer token from process environment to upstream requests;
 - run the same stdio runtime directly or in a minimal non-root Docker image.
 
 ## Requirements
@@ -204,6 +205,25 @@ Runtime limits are fixed in this slice:
 
 A non-2xx HTTP response preserves `status`, `contentType`, and `body`, while marking the MCP tool result as an error. Network, timeout, cancellation, response-read, and oversized-body failures are returned as tool execution errors.
 
+## Optional Bearer authentication
+
+Set `OASRELAY_BEARER_TOKEN` when the upstream API requires a Bearer token:
+
+```bash
+OASRELAY_BEARER_TOKEN='<token>' \
+  ./oasrelay serve --operation-id listCustomers ./openapi.yaml
+```
+
+When the variable contains a non-empty token, OASRelay sends:
+
+```text
+Authorization: Bearer <token>
+```
+
+The token is runtime process configuration. It is not an MCP tool argument, is not added to `tools/list`, and is not included in tool output. An unset, empty, or whitespace-only value keeps the existing unauthenticated behavior. Values containing carriage-return or line-feed characters are rejected before the MCP stdio runtime starts, and the rejection message does not echo the secret value.
+
+This is deliberately not OpenAPI security processing yet. OASRelay does not currently inspect `securitySchemes`, choose credentials from a specification, refresh OAuth tokens, or support API-key/Basic/custom-header authentication.
+
 ## Run with Docker
 
 Build the local image:
@@ -216,6 +236,16 @@ Mount the OpenAPI document read-only and keep stdin open for MCP protocol traffi
 
 ```bash
 docker run --rm -i \
+  --mount type=bind,src=/absolute/path/openapi.yaml,dst=/work/openapi.yaml,readonly \
+  oasrelay:local \
+  serve --operation-id listCustomers /work/openapi.yaml
+```
+
+For an authenticated upstream, pass the token only at container runtime:
+
+```bash
+docker run --rm -i \
+  -e OASRELAY_BEARER_TOKEN \
   --mount type=bind,src=/absolute/path/openapi.yaml,dst=/work/openapi.yaml,readonly \
   oasrelay:local \
   serve --operation-id listCustomers /work/openapi.yaml
@@ -250,7 +280,7 @@ Run the Docker build and end-to-end stdio acceptance test:
 ./scripts/test-docker.sh
 ```
 
-The in-process MCP tests use the official Go SDK's in-memory transports. The Docker acceptance test uses the SDK's `CommandTransport`, launches `docker run -i`, mounts a generated spec read-only, and calls a real host-side HTTP fixture through the container.
+The in-process MCP tests use the official Go SDK's in-memory transports. The Docker acceptance test uses the SDK's `CommandTransport`, launches `docker run -i`, mounts a generated spec read-only, forwards a test Bearer token through the container environment, and calls a real host-side HTTP fixture through the container.
 
 ## Current scope boundary
 
@@ -268,11 +298,12 @@ Implemented:
 - safe single-segment path argument validation and binding;
 - canonical integer serialization;
 - preservation of existing server URL paths and raw queries;
+- optional process-level Bearer authentication through `OASRELAY_BEARER_TOKEN`;
 - one stdio MCP tool;
 - one bounded upstream HTTP `GET` request;
 - structured success and non-2xx output;
 - minimal non-root Docker packaging;
-- container-level MCP stdio acceptance testing.
+- container-level MCP stdio and Bearer forwarding acceptance testing.
 
 Not implemented:
 
@@ -281,7 +312,8 @@ Not implemented:
 - header or cookie parameters;
 - path-item-level parameter inheritance;
 - arrays, objects, enums, unions, nullable schemas, schema constraints, or custom parameter serialization;
-- authentication or secret handling;
+- OpenAPI `securitySchemes` processing;
+- OAuth/OIDC, API-key, Basic, arbitrary-header, token-refresh, or secret-store authentication;
 - request bodies or non-GET execution;
 - multiple MCP tools;
 - Streamable HTTP transport;
