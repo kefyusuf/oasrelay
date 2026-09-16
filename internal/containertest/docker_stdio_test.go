@@ -22,11 +22,17 @@ import (
 )
 
 const expectedRuntimeUser = "65532:65532"
+const containerBearerToken = "container-secret"
 
 type toolOutput struct {
 	Status      int    `json:"status"`
 	ContentType string `json:"contentType"`
 	Body        string `json:"body"`
+}
+
+type observedRequest struct {
+	line          string
+	authorization string
 }
 
 func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
@@ -38,7 +44,7 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 	assertImageUser(t, image)
 
 	var calls atomic.Int32
-	requests := make(chan string, 1)
+	requests := make(chan observedRequest, 1)
 	listener, err := net.Listen("tcp4", "0.0.0.0:0")
 	if err != nil {
 		t.Fatalf("listen for upstream fixture: %v", err)
@@ -47,7 +53,10 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 	upstream := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		calls.Add(1)
 		select {
-		case requests <- request.Method + " " + request.URL.Path:
+		case requests <- observedRequest{
+			line:          request.Method + " " + request.URL.Path,
+			authorization: request.Header.Get("Authorization"),
+		}:
 		default:
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -74,6 +83,8 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 		"run",
 		"--rm",
 		"-i",
+		"-e",
+		"OASRELAY_BEARER_TOKEN="+containerBearerToken,
 		"--add-host",
 		"host.docker.internal:host-gateway",
 		"--mount",
@@ -115,6 +126,13 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 	if len(listed.Tools) != 1 || listed.Tools[0].Name != "listCustomers" {
 		t.Fatalf("listed tools = %#v, want exactly listCustomers", listed.Tools)
 	}
+	listedJSON, err := json.Marshal(listed)
+	if err != nil {
+		t.Fatalf("marshal listed tools: %v", err)
+	}
+	if strings.Contains(string(listedJSON), containerBearerToken) {
+		t.Fatal("bearer token leaked into MCP tools/list output")
+	}
 
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "listCustomers",
@@ -136,11 +154,21 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 	if got != want {
 		t.Fatalf("tool output = %#v, want %#v", got, want)
 	}
+	resultJSON, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal tool result: %v", err)
+	}
+	if strings.Contains(string(resultJSON), containerBearerToken) {
+		t.Fatal("bearer token leaked into MCP tool output")
+	}
 
 	select {
 	case request := <-requests:
-		if request != "GET /api/customers" {
-			t.Fatalf("upstream request = %q, want %q", request, "GET /api/customers")
+		if request.line != "GET /api/customers" {
+			t.Fatalf("upstream request = %q, want %q", request.line, "GET /api/customers")
+		}
+		if request.authorization != "Bearer "+containerBearerToken {
+			t.Fatalf("Authorization = %q, want bearer header", request.authorization)
 		}
 	case <-ctx.Done():
 		t.Fatalf("upstream request was not observed: %v", ctx.Err())
@@ -153,6 +181,9 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 		t.Fatalf("close container MCP session: %v; stderr = %q", err, stderr.String())
 	}
 	closed = true
+	if strings.Contains(stderr.String(), containerBearerToken) {
+		t.Fatal("bearer token leaked to container stderr")
+	}
 }
 
 func assertImageUser(t *testing.T, image string) {
