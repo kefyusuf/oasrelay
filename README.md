@@ -143,7 +143,9 @@ issues:
 GET /customers?limit=25
 ```
 
-Missing required input, a wrong primitive type, or an unknown input field is returned as an MCP tool error before any upstream request is sent. Query values use standard URL query escaping.
+Missing required input, explicit `null`, a wrong primitive type, or an unknown input field is returned as an MCP tool error before any upstream request is sent. Query values use standard URL query escaping. Integer values are emitted in canonical base-10 form even when a mathematically integral JSON number arrives as `25.0` or `25e0`.
+
+If the selected server URL already contains a raw query string, OASRelay preserves that existing query byte-for-byte and appends only the encoded operation parameter. This avoids silently dropping RFC-valid query pairs that Go's form-style query parser does not accept.
 
 A parameterless operation continues to expose an empty object input schema.
 
@@ -227,6 +229,8 @@ Implemented:
 - zero parameters or one required operation-level primitive query parameter;
 - dynamic MCP input schema for that query parameter;
 - query argument validation and URL binding;
+- canonical integer query serialization;
+- preservation of existing raw server URL queries when appending the operation parameter;
 - one stdio MCP tool;
 - one bounded upstream HTTP `GET` request;
 - structured success and non-2xx output;
