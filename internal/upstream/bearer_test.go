@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -73,5 +74,42 @@ func TestWithBearerTokenRejectsLineBreaksWithoutEchoingSecret(t *testing.T) {
 				t.Fatalf("error %q leaked bearer token", err)
 			}
 		})
+	}
+}
+
+func TestWithBearerTokenDoesNotFollowCrossOriginRedirect(t *testing.T) {
+	var targetCalls atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		targetCalls.Add(1)
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer target.Close()
+
+	sourceAuthorization := make(chan string, 1)
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		sourceAuthorization <- request.Header.Get("Authorization")
+		http.Redirect(w, request, target.URL, http.StatusFound)
+	}))
+	defer source.Close()
+
+	client, err := WithBearerToken(source.Client(), "secret-token")
+	if err != nil {
+		t.Fatalf("WithBearerToken() error = %v", err)
+	}
+
+	response, err := client.Get(source.URL)
+	if err != nil {
+		t.Fatalf("GET redirect source: %v", err)
+	}
+	defer response.Body.Close()
+
+	if got := <-sourceAuthorization; got != "Bearer secret-token" {
+		t.Fatalf("source Authorization = %q, want bearer header", got)
+	}
+	if response.StatusCode != http.StatusFound {
+		t.Fatalf("status = %d, want %d", response.StatusCode, http.StatusFound)
+	}
+	if targetCalls.Load() != 0 {
+		t.Fatalf("cross-origin redirect target calls = %d, want 0", targetCalls.Load())
 	}
 }
