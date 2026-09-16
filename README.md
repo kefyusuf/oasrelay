@@ -222,6 +222,8 @@ Authorization: Bearer <token>
 
 The token is runtime process configuration. It is not an MCP tool argument, is not added to `tools/list`, and is not included in tool output. An unset, empty, or whitespace-only value keeps the existing unauthenticated behavior. Values containing carriage-return or line-feed characters are rejected before the MCP stdio runtime starts, and the rejection message does not echo the secret value.
 
+Bearer-authenticated redirects are followed only when the redirect remains on the exact same origin (scheme, host, and port). A cross-origin redirect is returned as the upstream 3xx response instead of being followed, preventing the runtime Bearer token from being forwarded to another origin.
+
 This is deliberately not OpenAPI security processing yet. OASRelay does not currently inspect `securitySchemes`, choose credentials from a specification, refresh OAuth tokens, or support API-key/Basic/custom-header authentication.
 
 ## Run with Docker
