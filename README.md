@@ -5,7 +5,8 @@ OASRelay is a local-first runtime for exposing selected OpenAPI operations as MC
 The current scope is intentionally narrow:
 
 - inspect one local OpenAPI 3.x YAML or JSON document;
-- select one parameterless `GET` operation by its exact `operationId`;
+- select one `GET` operation by its exact `operationId`;
+- support either no parameters or one required primitive operation-level query parameter;
 - expose that operation as exactly one MCP tool over stdio;
 - execute one bounded upstream HTTP request when the tool is called;
 - run the same stdio runtime directly or in a minimal non-root Docker image.
@@ -87,14 +88,68 @@ The selected OpenAPI operation must:
 
 - have the exact requested `operationId`;
 - use `GET`;
-- have no path-level or operation-level parameters;
+- have no path-level parameters;
+- have either no operation-level parameters or exactly one supported query parameter;
 - have no request body;
 - resolve to a static, absolute `http` or `https` server URL;
 - use an MCP-compatible `operationId` containing 1–128 characters from `A-Z`, `a-z`, `0-9`, `_`, `-`, and `.`.
 
 Server precedence is operation-level, then path-level, then document-level. The first server at the selected scope is used.
 
-The tool accepts an empty object and returns structured output:
+### One required primitive query parameter
+
+A supported parameter must be operation-level, `in: query`, and `required: true`. Its schema must be a plain primitive `string`, `integer`, `number`, or `boolean` without additional constraints or custom serialization.
+
+For example:
+
+```yaml
+paths:
+  /customers:
+    get:
+      operationId: listCustomers
+      parameters:
+        - name: limit
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Customer collection
+```
+
+The MCP tool exposes an input schema equivalent to:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "limit": {"type": "integer"}
+  },
+  "required": ["limit"],
+  "additionalProperties": false
+}
+```
+
+Calling it with:
+
+```json
+{"limit": 25}
+```
+
+issues:
+
+```text
+GET /customers?limit=25
+```
+
+Missing required input, explicit `null`, a wrong primitive type, or an unknown input field is returned as an MCP tool error before any upstream request is sent. Query values use standard URL query escaping. Integer values are emitted in canonical base-10 form even when a mathematically integral JSON number arrives as `25.0` or `25e0`.
+
+If the selected server URL already contains a raw query string, OASRelay preserves that existing query byte-for-byte and appends only the encoded operation parameter. This avoids silently dropping RFC-valid query pairs that Go's form-style query parser does not accept.
+
+A parameterless operation continues to expose an empty object input schema.
+
+The tool response remains:
 
 ```json
 {
@@ -171,6 +226,11 @@ Implemented:
 - internal reference resolution with external references blocked;
 - deterministic `GET` operation discovery;
 - exact selection of one supported `operationId`;
+- zero parameters or one required operation-level primitive query parameter;
+- dynamic MCP input schema for that query parameter;
+- query argument validation and URL binding;
+- canonical integer query serialization;
+- preservation of existing raw server URL queries when appending the operation parameter;
 - one stdio MCP tool;
 - one bounded upstream HTTP `GET` request;
 - structured success and non-2xx output;
@@ -179,7 +239,10 @@ Implemented:
 
 Not implemented:
 
-- path, query, header, or cookie parameters;
+- optional or multiple query parameters;
+- path, header, or cookie parameters;
+- path-level parameter inheritance;
+- arrays, objects, enums, unions, nullable schemas, schema constraints, or custom parameter serialization;
 - authentication or secret handling;
 - request bodies or non-GET execution;
 - multiple MCP tools;
