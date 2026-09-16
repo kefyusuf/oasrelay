@@ -153,6 +153,34 @@ paths:
 	}
 }
 
+func TestSelectGETRejectsRepeatedPathPlaceholder(t *testing.T) {
+	path := writeSelectionSpec(t, `openapi: 3.0.3
+info:
+  title: Path API
+  version: 1.0.0
+servers:
+  - url: https://example.test
+paths:
+  /customers/{customerId}/related/{customerId}:
+    get:
+      operationId: getRelatedCustomer
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Related customer
+`)
+
+	_, err := SelectGET(path, "getRelatedCustomer")
+	if err == nil || !strings.Contains(err.Error(), "exactly one path placeholder") {
+		t.Fatalf("error = %v, want exactly-one placeholder rejection", err)
+	}
+}
+
 func TestSelectGETStillRejectsQueryAndPathCombination(t *testing.T) {
 	path := writeSelectionSpec(t, `openapi: 3.0.3
 info:
