@@ -12,7 +12,7 @@ import (
 
 func TestWithBearerTokenAddsAuthorizationHeader(t *testing.T) {
 	authorization := make(chan string, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		authorization <- request.Header.Get("Authorization")
 		_, _ = io.WriteString(w, `{}`)
 	}))
@@ -28,6 +28,27 @@ func TestWithBearerTokenAddsAuthorizationHeader(t *testing.T) {
 
 	if got := <-authorization; got != "Bearer secret-token" {
 		t.Fatalf("Authorization = %q, want %q", got, "Bearer secret-token")
+	}
+}
+
+func TestWithBearerTokenRejectsPlainHTTPBeforeRequest(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer server.Close()
+
+	client, err := WithBearerToken(server.Client(), "secret-token")
+	if err != nil {
+		t.Fatalf("WithBearerToken() error = %v", err)
+	}
+	_, err = client.Get(server.URL)
+	if err == nil || !strings.Contains(err.Error(), "HTTPS") {
+		t.Fatalf("GET error = %v, want HTTPS rejection", err)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("HTTP upstream calls = %d, want 0", calls.Load())
 	}
 }
 
@@ -79,14 +100,14 @@ func TestWithBearerTokenRejectsLineBreaksWithoutEchoingSecret(t *testing.T) {
 
 func TestWithBearerTokenDoesNotFollowCrossOriginRedirect(t *testing.T) {
 	var targetCalls atomic.Int32
-	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	target := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		targetCalls.Add(1)
 		_, _ = io.WriteString(w, `{}`)
 	}))
 	defer target.Close()
 
 	sourceAuthorization := make(chan string, 1)
-	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+	source := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		sourceAuthorization <- request.Header.Get("Authorization")
 		http.Redirect(w, request, target.URL, http.StatusFound)
 	}))
@@ -116,7 +137,7 @@ func TestWithBearerTokenDoesNotFollowCrossOriginRedirect(t *testing.T) {
 
 func TestWithBearerTokenFollowsSameOriginRedirect(t *testing.T) {
 	authorizations := make(chan string, 2)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		authorizations <- request.Header.Get("Authorization")
 		if request.URL.Path == "/start" {
 			http.Redirect(w, request, "/final", http.StatusFound)
