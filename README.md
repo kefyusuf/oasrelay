@@ -6,7 +6,7 @@ The current scope is intentionally narrow:
 
 - inspect one local OpenAPI 3.x YAML or JSON document;
 - select one `GET` operation by its exact `operationId`;
-- support either no parameters or one required primitive operation-level query parameter;
+- support no parameters, one required primitive operation-level query parameter, or one required primitive operation-level path parameter;
 - expose that operation as exactly one MCP tool over stdio;
 - execute one bounded upstream HTTP request when the tool is called;
 - run the same stdio runtime directly or in a minimal non-root Docker image.
@@ -88,8 +88,8 @@ The selected OpenAPI operation must:
 
 - have the exact requested `operationId`;
 - use `GET`;
-- have no path-level parameters;
-- have either no operation-level parameters or exactly one supported query parameter;
+- have no path-item-level parameters;
+- have either no operation-level parameter or exactly one supported query or path parameter;
 - have no request body;
 - resolve to a static, absolute `http` or `https` server URL;
 - use an MCP-compatible `operationId` containing 1–128 characters from `A-Z`, `a-z`, `0-9`, `_`, `-`, and `.`.
@@ -98,7 +98,7 @@ Server precedence is operation-level, then path-level, then document-level. The 
 
 ### One required primitive query parameter
 
-A supported parameter must be operation-level, `in: query`, and `required: true`. Its schema must be a plain primitive `string`, `integer`, `number`, or `boolean` without additional constraints or custom serialization.
+A supported query parameter must be operation-level, `in: query`, and `required: true`. Its schema must be a plain primitive `string`, `integer`, `number`, or `boolean` without additional constraints or custom serialization.
 
 For example:
 
@@ -143,11 +143,47 @@ issues:
 GET /customers?limit=25
 ```
 
-Missing required input, explicit `null`, a wrong primitive type, or an unknown input field is returned as an MCP tool error before any upstream request is sent. Query values use standard URL query escaping. Integer values are emitted in canonical base-10 form even when a mathematically integral JSON number arrives as `25.0` or `25e0`.
+Query values use standard URL query escaping. Integer values are emitted in canonical base-10 form even when a mathematically integral JSON number arrives as `25.0` or `25e0`.
 
 If the selected server URL already contains a raw query string, OASRelay preserves that existing query byte-for-byte and appends only the encoded operation parameter. This avoids silently dropping RFC-valid query pairs that Go's form-style query parser does not accept.
 
-A parameterless operation continues to expose an empty object input schema.
+### One required primitive path parameter
+
+A supported path parameter must be declared directly on the operation, use `in: path`, be `required: true`, and use the default simple path serialization. Its name must match exactly one `{name}` placeholder in the operation path, and its schema must be a plain primitive `string`, `integer`, `number`, or `boolean` without additional constraints.
+
+For example:
+
+```yaml
+paths:
+  /customers/{customerId}:
+    get:
+      operationId: getCustomer
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Customer
+```
+
+The MCP tool exposes one required `customerId` string property. Calling it with:
+
+```json
+{"customerId": "cus_123"}
+```
+
+issues:
+
+```text
+GET /customers/cus_123
+```
+
+A path argument is encoded as one path segment. For example, `a/b` is sent as `a%2Fb`, so caller data cannot introduce an extra path segment. Literal `.` and `..` values are percent-encoded as data instead of being left as dot-segments. Existing server URL paths and raw query strings are preserved.
+
+For both query and path parameters, missing required input, explicit `null`, a wrong primitive type, or an unknown input field is returned as an MCP tool error before any upstream request is sent. A parameterless operation continues to expose an empty object input schema.
 
 The tool response remains:
 
@@ -226,11 +262,12 @@ Implemented:
 - internal reference resolution with external references blocked;
 - deterministic `GET` operation discovery;
 - exact selection of one supported `operationId`;
-- zero parameters or one required operation-level primitive query parameter;
-- dynamic MCP input schema for that query parameter;
+- zero parameters, one required operation-level primitive query parameter, or one required operation-level primitive path parameter;
+- dynamic MCP input schema for the selected primitive parameter;
 - query argument validation and URL binding;
-- canonical integer query serialization;
-- preservation of existing raw server URL queries when appending the operation parameter;
+- safe single-segment path argument validation and binding;
+- canonical integer serialization;
+- preservation of existing server URL paths and raw queries;
 - one stdio MCP tool;
 - one bounded upstream HTTP `GET` request;
 - structured success and non-2xx output;
@@ -239,9 +276,10 @@ Implemented:
 
 Not implemented:
 
-- optional or multiple query parameters;
-- path, header, or cookie parameters;
-- path-level parameter inheritance;
+- optional or multiple operation parameters;
+- query + path parameter combinations;
+- header or cookie parameters;
+- path-item-level parameter inheritance;
 - arrays, objects, enums, unions, nullable schemas, schema constraints, or custom parameter serialization;
 - authentication or secret handling;
 - request bodies or non-GET execution;
