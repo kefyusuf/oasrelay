@@ -186,7 +186,7 @@ func supportedOperationParameter(
 		return nil, parameter, err
 	default:
 		return nil, nil, fmt.Errorf(
-			"operationId %q parameter %q is in %s; this version supports query or path parameters only",
+			"operationId %q parameter %q is in %s; this version supports query parameters only for non-path parameters; the bounded path-parameter form is also supported",
 			operationID,
 			parameterRef.Value.Name,
 			parameterRef.Value.In,
