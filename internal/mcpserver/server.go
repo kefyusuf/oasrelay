@@ -139,9 +139,12 @@ func bindQueryParameter(
 	if err != nil {
 		return "", fmt.Errorf("parse endpoint: %w", err)
 	}
-	query := parsed.Query()
-	query.Set(parameter.Name, value)
-	parsed.RawQuery = query.Encode()
+	encodedParameter := url.Values{parameter.Name: []string{value}}.Encode()
+	if parsed.RawQuery == "" {
+		parsed.RawQuery = encodedParameter
+	} else {
+		parsed.RawQuery += "&" + encodedParameter
+	}
 	return parsed.String(), nil
 }
 
