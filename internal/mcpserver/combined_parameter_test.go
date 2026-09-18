@@ -200,7 +200,7 @@ func TestServerRejectsInvalidCombinedArgumentsBeforeUpstream(t *testing.T) {
 
 			server, err := New(
 				combinedOperation(
-					upstream.URL + "/customers/%7BcustomerId%7D/orders",
+					upstream.URL+"/customers/%7BcustomerId%7D/orders",
 				),
 				upstream.Client(),
 			)
