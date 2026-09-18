@@ -219,8 +219,8 @@ func listenTLSFixture(t *testing.T) (net.Listener, string) {
 	}
 	caDER, err := x509.CreateCertificate(
 		rand.Reader,
-		&caTemplate,
-		&caTemplate,
+		caTemplate,
+		caTemplate,
 		&caKey.PublicKey,
 		caKey,
 	)
@@ -243,8 +243,8 @@ func listenTLSFixture(t *testing.T) (net.Listener, string) {
 	}
 	serverDER, err := x509.CreateCertificate(
 		rand.Reader,
-		&serverTemplate,
-		&caTemplate,
+		serverTemplate,
+		caTemplate,
 		&serverKey.PublicKey,
 		caKey,
 	)
