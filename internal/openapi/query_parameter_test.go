@@ -141,7 +141,7 @@ func TestSelectGETRejectsUnsupportedParameterShapes(t *testing.T) {
           required: true
           schema:
             type: integer`,
-			message: "supports query parameters only",
+			message: "supports query and path parameters only",
 		},
 		{
 			name: "multiple parameters",
@@ -158,7 +158,7 @@ func TestSelectGETRejectsUnsupportedParameterShapes(t *testing.T) {
           required: true
           schema:
             type: string`,
-			message: "supports at most one operation-level parameter",
+			message: "at most one query parameter",
 		},
 		{
 			name: "array schema",

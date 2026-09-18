@@ -208,36 +208,3 @@ paths:
 		t.Fatalf("error = %v, want additional-placeholder rejection", err)
 	}
 }
-
-func TestSelectGETStillRejectsQueryAndPathCombination(t *testing.T) {
-	path := writeSelectionSpec(t, `openapi: 3.0.3
-info:
-  title: Path API
-  version: 1.0.0
-servers:
-  - url: https://example.test
-paths:
-  /customers/{customerId}:
-    get:
-      operationId: getCustomer
-      parameters:
-        - name: customerId
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: expand
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Customer
-`)
-
-	_, err := SelectGET(path, "getCustomer")
-	if err == nil || !strings.Contains(err.Error(), "at most one operation-level parameter") {
-		t.Fatalf("error = %v, want one-parameter limit", err)
-	}
-}
