@@ -7,8 +7,8 @@ import (
 )
 
 // WithBearerToken returns a shallow copy of client whose transport adds one
-// Authorization bearer header. Empty or whitespace-only tokens leave the
-// client unchanged.
+// Authorization bearer header to HTTPS requests. Empty or whitespace-only
+// tokens leave the client unchanged.
 func WithBearerToken(client *http.Client, token string) (*http.Client, error) {
 	if client == nil {
 		return nil, fmt.Errorf("HTTP client is required")
@@ -55,6 +55,13 @@ type bearerTransport struct {
 }
 
 func (transport bearerTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if request == nil || request.URL == nil {
+		return nil, fmt.Errorf("bearer authentication requires a request URL")
+	}
+	if !strings.EqualFold(request.URL.Scheme, "https") {
+		return nil, fmt.Errorf("bearer authentication requires HTTPS upstream")
+	}
+
 	clone := request.Clone(request.Context())
 	clone.Header = request.Header.Clone()
 	clone.Header.Set("Authorization", "Bearer "+transport.token)
