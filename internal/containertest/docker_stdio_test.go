@@ -5,9 +5,17 @@ package containertest
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -22,11 +30,17 @@ import (
 )
 
 const expectedRuntimeUser = "65532:65532"
+const containerBearerToken = "container-secret"
 
 type toolOutput struct {
 	Status      int    `json:"status"`
 	ContentType string `json:"contentType"`
 	Body        string `json:"body"`
+}
+
+type observedRequest struct {
+	line          string
+	authorization string
 }
 
 func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
@@ -38,16 +52,16 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 	assertImageUser(t, image)
 
 	var calls atomic.Int32
-	requests := make(chan string, 1)
-	listener, err := net.Listen("tcp4", "0.0.0.0:0")
-	if err != nil {
-		t.Fatalf("listen for upstream fixture: %v", err)
-	}
+	requests := make(chan observedRequest, 1)
+	listener, caPath := listenTLSFixture(t)
 
 	upstream := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		calls.Add(1)
 		select {
-		case requests <- request.Method + " " + request.URL.Path:
+		case requests <- observedRequest{
+			line:          request.Method + " " + request.URL.Path,
+			authorization: request.Header.Get("Authorization"),
+		}:
 		default:
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -68,16 +82,26 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 		"type=bind,src=%s,dst=/work/openapi.yaml,readonly",
 		specPath,
 	)
+	caMount := fmt.Sprintf(
+		"type=bind,src=%s,dst=/work/oasrelay-test-ca.pem,readonly",
+		caPath,
+	)
 
 	command := exec.Command(
 		"docker",
 		"run",
 		"--rm",
 		"-i",
+		"-e",
+		"OASRELAY_BEARER_TOKEN="+containerBearerToken,
+		"-e",
+		"SSL_CERT_FILE=/work/oasrelay-test-ca.pem",
 		"--add-host",
 		"host.docker.internal:host-gateway",
 		"--mount",
 		mount,
+		"--mount",
+		caMount,
 		image,
 		"serve",
 		"--operation-id",
@@ -115,6 +139,13 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 	if len(listed.Tools) != 1 || listed.Tools[0].Name != "listCustomers" {
 		t.Fatalf("listed tools = %#v, want exactly listCustomers", listed.Tools)
 	}
+	listedJSON, err := json.Marshal(listed)
+	if err != nil {
+		t.Fatalf("marshal listed tools: %v", err)
+	}
+	if strings.Contains(string(listedJSON), containerBearerToken) {
+		t.Fatal("bearer token leaked into MCP tools/list output")
+	}
 
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "listCustomers",
@@ -136,11 +167,21 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 	if got != want {
 		t.Fatalf("tool output = %#v, want %#v", got, want)
 	}
+	resultJSON, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal tool result: %v", err)
+	}
+	if strings.Contains(string(resultJSON), containerBearerToken) {
+		t.Fatal("bearer token leaked into MCP tool output")
+	}
 
 	select {
 	case request := <-requests:
-		if request != "GET /api/customers" {
-			t.Fatalf("upstream request = %q, want %q", request, "GET /api/customers")
+		if request.line != "GET /api/customers" {
+			t.Fatalf("upstream request = %q, want %q", request.line, "GET /api/customers")
+		}
+		if request.authorization != "Bearer "+containerBearerToken {
+			t.Fatalf("Authorization = %q, want bearer header", request.authorization)
 		}
 	case <-ctx.Done():
 		t.Fatalf("upstream request was not observed: %v", ctx.Err())
@@ -153,6 +194,89 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 		t.Fatalf("close container MCP session: %v; stderr = %q", err, stderr.String())
 	}
 	closed = true
+	if strings.Contains(stderr.String(), containerBearerToken) {
+		t.Fatal("bearer token leaked to container stderr")
+	}
+}
+
+func listenTLSFixture(t *testing.T) (net.Listener, string) {
+	t.Helper()
+
+	now := time.Now()
+
+	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate test CA key: %v", err)
+	}
+	caTemplate := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "OASRelay Docker Test CA"},
+		NotBefore:             now.Add(-time.Minute),
+		NotAfter:              now.Add(time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+	caDER, err := x509.CreateCertificate(
+		rand.Reader,
+		caTemplate,
+		caTemplate,
+		&caKey.PublicKey,
+		caKey,
+	)
+	if err != nil {
+		t.Fatalf("create test CA certificate: %v", err)
+	}
+
+	serverKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate TLS server key: %v", err)
+	}
+	serverTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: "host.docker.internal"},
+		DNSNames:     []string{"host.docker.internal"},
+		NotBefore:    now.Add(-time.Minute),
+		NotAfter:     now.Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	serverDER, err := x509.CreateCertificate(
+		rand.Reader,
+		serverTemplate,
+		caTemplate,
+		&serverKey.PublicKey,
+		caKey,
+	)
+	if err != nil {
+		t.Fatalf("create TLS server certificate: %v", err)
+	}
+
+	baseListener, err := net.Listen("tcp4", "0.0.0.0:0")
+	if err != nil {
+		t.Fatalf("listen for TLS upstream fixture: %v", err)
+	}
+
+	caPath := filepath.Join(t.TempDir(), "oasrelay-test-ca.pem")
+	caPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER})
+	if err := os.WriteFile(caPath, caPEM, 0o644); err != nil {
+		_ = baseListener.Close()
+		t.Fatalf("write test CA certificate: %v", err)
+	}
+	absoluteCAPath, err := filepath.Abs(caPath)
+	if err != nil {
+		_ = baseListener.Close()
+		t.Fatalf("resolve test CA certificate path: %v", err)
+	}
+
+	listener := tls.NewListener(baseListener, &tls.Config{
+		Certificates: []tls.Certificate{{
+			Certificate: [][]byte{serverDER, caDER},
+			PrivateKey:  serverKey,
+		}},
+		MinVersion: tls.VersionTLS12,
+	})
+	return listener, absoluteCAPath
 }
 
 func assertImageUser(t *testing.T, image string) {
@@ -184,7 +308,7 @@ info:
   title: Docker Acceptance API
   version: 1.0.0
 servers:
-  - url: http://host.docker.internal:%d/api
+  - url: https://host.docker.internal:%d/api
 paths:
   /customers:
     get:
