@@ -249,6 +249,21 @@ func TestSelectGETRejectsUnsupportedCombinedParameterShapes(t *testing.T) {
             type: integer`,
             message: "supports query and path parameters only",
         },
+        {
+            name:  "cookie with path",
+            route: "/customers/{customerId}",
+            parameters: `        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: session
+          in: cookie
+          required: true
+          schema:
+            type: string`,
+            message: "supports query and path parameters only",
+        },
     }
 
     for _, test := range tests {
@@ -700,17 +715,38 @@ func TestServerExposesCombinedPathAndQueryInputSchema(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the MCP package test and verify RED**
+- [ ] **Step 2: Add a defensive duplicate-name RED test for direct SelectedOperation callers**
+
+Append:
+
+```go
+func TestServerRejectsCombinedParametersWithSameInputName(t *testing.T) {
+    operation := combinedOperation(
+        "http://example.test/customers/%7Bid%7D/orders",
+    )
+    operation.PathParameter.Name = "id"
+    operation.QueryParameter.Name = "id"
+
+    _, err := New(operation, http.DefaultClient)
+    if err == nil || !strings.Contains(err.Error(), "share MCP input name") {
+        t.Fatalf("New() error = %v, want duplicate input-name rejection", err)
+    }
+}
+```
+
+Add `"strings"` to the test imports.
+
+- [ ] **Step 3: Run the MCP package tests and verify RED**
 
 Run:
 
 ```bash
-go test ./internal/mcpserver -run TestServerExposesCombinedPathAndQueryInputSchema -count=1
+go test ./internal/mcpserver -run 'TestServer(ExposesCombined|RejectsCombinedParametersWithSameInputName)' -count=1
 ```
 
-Expected: FAIL because `New` still rejects simultaneous query/path parameters.
+Expected: FAIL because `New` still rejects every simultaneous query/path pair before it can distinguish a valid pair from an ambiguous same-name pair.
 
-- [ ] **Step 3: Replace the blanket combined-parameter rejection with a defensive duplicate-name check**
+- [ ] **Step 4: Replace the blanket combined-parameter rejection with a defensive duplicate-name check**
 
 In `internal/mcpserver/server.go`, replace:
 
@@ -735,7 +771,7 @@ if operation.QueryParameter != nil &&
 
 The selector is the primary contract gate; this remains a defensive invariant for direct `SelectedOperation` callers.
 
-- [ ] **Step 4: Replace one-property schema construction with deterministic composition**
+- [ ] **Step 5: Replace one-property schema construction with deterministic composition**
 
 Replace `toolInputSchema` and remove `operationInputParameter`. Use:
 
@@ -772,7 +808,7 @@ func toolInputSchema(operation oasopenapi.SelectedOperation) map[string]any {
 
 Do not add an internal generic parameter slice.
 
-- [ ] **Step 5: Run all MCP schema regressions and verify GREEN**
+- [ ] **Step 6: Run all MCP schema regressions and verify GREEN**
 
 Run:
 
@@ -783,7 +819,7 @@ go test ./internal/mcpserver -count=1
 
 Expected: the new two-property schema test and existing parameterless/single-query/single-path tests all PASS.
 
-- [ ] **Step 6: Commit the schema slice**
+- [ ] **Step 7: Commit the schema slice**
 
 ```bash
 git add internal/mcpserver/server.go internal/mcpserver/combined_parameter_test.go
