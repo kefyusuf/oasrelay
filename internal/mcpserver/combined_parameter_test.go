@@ -120,7 +120,7 @@ func TestServerBindsPathThenQueryAndPreservesRawServerQuery(t *testing.T) {
 	defer cleanup()
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name: "getCustomerOrders",
+		Name:      "getCustomerOrders",
 		Arguments: map[string]any{
 			"customerId": "a/b",
 			"limit":      json.Number("25e0"),
