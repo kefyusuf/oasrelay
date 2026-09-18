@@ -98,7 +98,6 @@ func TestServerRejectsCombinedParametersWithSameInputName(t *testing.T) {
 	}
 }
 
-
 func TestServerBindsPathThenQueryAndPreservesRawServerQuery(t *testing.T) {
 	requests := make(chan string, 1)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
