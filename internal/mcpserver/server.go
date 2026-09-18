@@ -152,10 +152,80 @@ func bindOperationArguments(
 	operation oasopenapi.SelectedOperation,
 	input map[string]json.RawMessage,
 ) (string, error) {
-	if operation.PathParameter != nil {
-		return bindPathParameter(operation.Endpoint, operation.PathParameter, input)
+	switch {
+	case operation.PathParameter != nil && operation.QueryParameter != nil:
+		return bindPathAndQueryParameters(operation, input)
+	case operation.PathParameter != nil:
+		return bindPathParameter(
+			operation.Endpoint,
+			operation.PathParameter,
+			input,
+		)
+	default:
+		return bindQueryParameter(
+			operation.Endpoint,
+			operation.QueryParameter,
+			input,
+		)
 	}
-	return bindQueryParameter(operation.Endpoint, operation.QueryParameter, input)
+}
+
+func bindPathAndQueryParameters(
+	operation oasopenapi.SelectedOperation,
+	input map[string]json.RawMessage,
+) (string, error) {
+	pathParameter := operation.PathParameter
+	queryParameter := operation.QueryParameter
+	if pathParameter == nil || queryParameter == nil {
+		return "", fmt.Errorf("combined binding requires one path and one query parameter")
+	}
+	if pathParameter.Name == queryParameter.Name {
+		return "", fmt.Errorf(
+			"path and query parameters share MCP input name %q",
+			pathParameter.Name,
+		)
+	}
+	if len(input) != 2 {
+		return "", fmt.Errorf(
+			"tool requires exactly path parameter %q and query parameter %q",
+			pathParameter.Name,
+			queryParameter.Name,
+		)
+	}
+
+	pathRaw, ok := input[pathParameter.Name]
+	if !ok {
+		return "", fmt.Errorf(
+			"required path parameter %q is missing",
+			pathParameter.Name,
+		)
+	}
+	queryRaw, ok := input[queryParameter.Name]
+	if !ok {
+		return "", fmt.Errorf(
+			"required query parameter %q is missing",
+			queryParameter.Name,
+		)
+	}
+
+	endpoint, err := bindPathParameter(
+		operation.Endpoint,
+		pathParameter,
+		map[string]json.RawMessage{
+			pathParameter.Name: pathRaw,
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+
+	return bindQueryParameter(
+		endpoint,
+		queryParameter,
+		map[string]json.RawMessage{
+			queryParameter.Name: queryRaw,
+		},
+	)
 }
 
 func bindQueryParameter(
