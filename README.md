@@ -220,6 +220,8 @@ When the variable contains a non-empty token, OASRelay sends:
 Authorization: Bearer <token>
 ```
 
+Bearer authentication requires an `https://` upstream. If a non-empty token is configured for an `http://` endpoint, OASRelay rejects the request before any network call is made. Unauthenticated HTTP endpoints remain supported.
+
 The token is runtime process configuration. It is not an MCP tool argument, is not added to `tools/list`, and is not included in tool output. An unset, empty, or whitespace-only value keeps the existing unauthenticated behavior. Values containing carriage-return or line-feed characters are rejected before the MCP stdio runtime starts, and the rejection message does not echo the secret value.
 
 Bearer-authenticated redirects are followed only when the redirect remains on the exact same origin (scheme, host, and port). A cross-origin redirect is returned as the upstream 3xx response instead of being followed, preventing the runtime Bearer token from being forwarded to another origin.
@@ -243,7 +245,7 @@ docker run --rm -i \
   serve --operation-id listCustomers /work/openapi.yaml
 ```
 
-For an authenticated upstream, pass the token only at container runtime:
+For an authenticated HTTPS upstream, pass the token only at container runtime:
 
 ```bash
 docker run --rm -i \
@@ -282,7 +284,7 @@ Run the Docker build and end-to-end stdio acceptance test:
 ./scripts/test-docker.sh
 ```
 
-The in-process MCP tests use the official Go SDK's in-memory transports. The Docker acceptance test uses the SDK's `CommandTransport`, launches `docker run -i`, mounts a generated spec read-only, forwards a test Bearer token through the container environment, and calls a real host-side HTTP fixture through the container.
+The in-process MCP tests use the official Go SDK's in-memory transports. The Docker acceptance test uses the SDK's `CommandTransport`, launches `docker run -i`, mounts a generated spec and ephemeral test CA read-only, forwards a test Bearer token through the container environment, and calls a real host-side HTTPS fixture through the container.
 
 ## Current scope boundary
 
@@ -300,7 +302,7 @@ Implemented:
 - safe single-segment path argument validation and binding;
 - canonical integer serialization;
 - preservation of existing server URL paths and raw queries;
-- optional process-level Bearer authentication through `OASRELAY_BEARER_TOKEN`;
+- optional process-level Bearer authentication through `OASRELAY_BEARER_TOKEN`, restricted to HTTPS upstreams;
 - one stdio MCP tool;
 - one bounded upstream HTTP `GET` request;
 - structured success and non-2xx output;
