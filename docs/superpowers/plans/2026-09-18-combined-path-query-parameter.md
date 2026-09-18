@@ -363,7 +363,7 @@ paths:
 }
 ```
 
-- [ ] **Step 4: Update the existing two-query regression message**
+- [ ] **Step 4: Update the existing query-parameter regression messages**
 
 In `internal/openapi/query_parameter_test.go`, keep the existing `multiple parameters` case as two query parameters but change its expected message from:
 
@@ -375,6 +375,18 @@ to:
 
 ```go
 message: "at most one query parameter",
+```
+
+The location classifier now rejects headers before `supportedQueryParameter` runs, so also change the existing `header parameter` case from:
+
+```go
+message: "supports query parameters only",
+```
+
+to:
+
+```go
+message: "supports query and path parameters only",
 ```
 
 - [ ] **Step 5: Run the selector and CLI tests and verify RED**
@@ -1220,7 +1232,7 @@ with:
 
 Add:
 
-```markdown
+~~~~markdown
 ### One required path + one required query parameter
 
 OASRelay also supports exactly one required primitive operation-level path
@@ -1271,8 +1283,7 @@ This does not enable arbitrary multiple parameters: two query parameters, two
 path parameters, more than two operation-level parameters, optional parameters,
 headers, cookies, path-item-level inheritance, and custom serialization remain
 unsupported.
-```
-```
+~~~~
 
 - [ ] **Step 4: Update the implemented/non-goal lists**
 
@@ -1333,7 +1344,15 @@ git commit -m "docs: document combined path and query parameters"
 - [ ] **Step 1: Run the complete local verification matrix**
 
 ```bash
-gofmt -w   internal/openapi/select.go   internal/openapi/combined_parameter_test.go   internal/openapi/query_parameter_test.go   internal/openapi/path_parameter_test.go   internal/mcpserver/server.go   internal/mcpserver/combined_parameter_test.go   cmd/oasrelay/combined_parameter_test.go   internal/containertest/docker_stdio_test.go
+gofmt -w \
+  internal/openapi/select.go \
+  internal/openapi/combined_parameter_test.go \
+  internal/openapi/query_parameter_test.go \
+  internal/openapi/path_parameter_test.go \
+  internal/mcpserver/server.go \
+  internal/mcpserver/combined_parameter_test.go \
+  cmd/oasrelay/combined_parameter_test.go \
+  internal/containertest/docker_stdio_test.go
 
 go mod tidy
 git diff --exit-code -- go.mod go.sum
