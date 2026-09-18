@@ -35,8 +35,13 @@ func New(operation oasopenapi.SelectedOperation, client *http.Client) (*mcp.Serv
 	if client == nil {
 		return nil, fmt.Errorf("HTTP client is required")
 	}
-	if operation.QueryParameter != nil && operation.PathParameter != nil {
-		return nil, fmt.Errorf("operation cannot expose query and path parameters together")
+	if operation.QueryParameter != nil &&
+		operation.PathParameter != nil &&
+		operation.QueryParameter.Name == operation.PathParameter.Name {
+		return nil, fmt.Errorf(
+			"path and query parameters share MCP input name %q",
+			operation.QueryParameter.Name,
+		)
 	}
 	if err := validateMCPToolName(operation.OperationID); err != nil {
 		return nil, fmt.Errorf(
@@ -115,32 +120,32 @@ func runtimeHTTPClient(getenv func(string) string) (*http.Client, error) {
 }
 
 func toolInputSchema(operation oasopenapi.SelectedOperation) map[string]any {
+	properties := map[string]any{}
+	required := []string{}
+
+	if parameter := operation.PathParameter; parameter != nil {
+		properties[parameter.Name] = map[string]any{
+			"type": parameter.Type,
+		}
+		required = append(required, parameter.Name)
+	}
+
+	if parameter := operation.QueryParameter; parameter != nil {
+		properties[parameter.Name] = map[string]any{
+			"type": parameter.Type,
+		}
+		required = append(required, parameter.Name)
+	}
+
 	schema := map[string]any{
 		"type":                 "object",
-		"properties":           map[string]any{},
+		"properties":           properties,
 		"additionalProperties": false,
 	}
-
-	name, parameterType, ok := operationInputParameter(operation)
-	if !ok {
-		return schema
+	if len(required) != 0 {
+		schema["required"] = required
 	}
-
-	schema["properties"] = map[string]any{
-		name: map[string]any{"type": parameterType},
-	}
-	schema["required"] = []string{name}
 	return schema
-}
-
-func operationInputParameter(operation oasopenapi.SelectedOperation) (string, string, bool) {
-	if operation.QueryParameter != nil {
-		return operation.QueryParameter.Name, operation.QueryParameter.Type, true
-	}
-	if operation.PathParameter != nil {
-		return operation.PathParameter.Name, operation.PathParameter.Type, true
-	}
-	return "", "", false
 }
 
 func bindOperationArguments(
