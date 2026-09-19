@@ -6,7 +6,7 @@ The current scope is intentionally narrow:
 
 - inspect one local OpenAPI 3.x YAML or JSON document;
 - select one `GET` operation by its exact `operationId`;
-- support no parameters, one required primitive operation-level query parameter, or one required primitive operation-level path parameter;
+- support no parameters, one required primitive operation-level query parameter, one required primitive operation-level path parameter, or exactly one of each;
 - expose that operation as exactly one MCP tool over stdio;
 - execute one bounded upstream HTTP request when the tool is called;
 - optionally attach one Bearer token from process environment to upstream requests;
@@ -90,7 +90,7 @@ The selected OpenAPI operation must:
 - have the exact requested `operationId`;
 - use `GET`;
 - have no path-item-level parameters;
-- have either no operation-level parameter or exactly one supported query or path parameter;
+- have no operation-level parameters, one supported query parameter, one supported path parameter, or exactly one supported path plus one supported query parameter;
 - have no request body;
 - resolve to a static, absolute `http` or `https` server URL;
 - use an MCP-compatible `operationId` containing 1–128 characters from `A-Z`, `a-z`, `0-9`, `_`, `-`, and `.`.
@@ -183,6 +183,52 @@ GET /customers/cus_123
 ```
 
 A path argument is encoded as one path segment. For example, `a/b` is sent as `a%2Fb`, so caller data cannot introduce an extra path segment. Literal `.` and `..` values are percent-encoded as data instead of being left as dot-segments. Existing server URL paths and raw query strings are preserved.
+
+### One required path + one required query parameter
+
+OASRelay also supports exactly one required primitive operation-level path parameter together with exactly one required primitive operation-level query parameter.
+
+For example:
+
+```yaml
+paths:
+  /customers/{customerId}/orders:
+    get:
+      operationId: getCustomerOrders
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Customer orders
+```
+
+The MCP input is a closed object with both properties required:
+
+```json
+{
+  "customerId": "cus_123",
+  "limit": 25
+}
+```
+
+The upstream request is:
+
+```text
+GET /customers/cus_123/orders?limit=25
+```
+
+OpenAPI declaration order does not matter. Binding is always path first and query second. Existing path escaping, raw-query preservation, primitive type validation, canonical integer serialization, and Bearer security rules remain unchanged.
+
+This does not enable arbitrary multiple parameters: two query parameters, two path parameters, more than two operation-level parameters, optional parameters, headers, cookies, path-item-level inheritance, and custom serialization remain unsupported.
 
 For both query and path parameters, missing required input, explicit `null`, a wrong primitive type, or an unknown input field is returned as an MCP tool error before any upstream request is sent. A parameterless operation continues to expose an empty object input schema.
 
@@ -296,10 +342,11 @@ Implemented:
 - internal reference resolution with external references blocked;
 - deterministic `GET` operation discovery;
 - exact selection of one supported `operationId`;
-- zero parameters, one required operation-level primitive query parameter, or one required operation-level primitive path parameter;
-- dynamic MCP input schema for the selected primitive parameter;
+- zero parameters, one required operation-level primitive query parameter, one required operation-level primitive path parameter, or exactly one of each;
+- dynamic closed MCP input schema for the selected primitive parameter or supported path-plus-query pair;
 - query argument validation and URL binding;
 - safe single-segment path argument validation and binding;
+- combined path-then-query validation and binding for exactly one parameter in each location;
 - canonical integer serialization;
 - preservation of existing server URL paths and raw queries;
 - optional process-level Bearer authentication through `OASRELAY_BEARER_TOKEN`, restricted to HTTPS upstreams;
@@ -307,12 +354,12 @@ Implemented:
 - one bounded upstream HTTP `GET` request;
 - structured success and non-2xx output;
 - minimal non-root Docker packaging;
-- container-level MCP stdio and Bearer forwarding acceptance testing.
+- container-level MCP stdio, combined path-plus-query binding, and Bearer forwarding acceptance testing.
 
 Not implemented:
 
-- optional or multiple operation parameters;
-- query + path parameter combinations;
+- arbitrary multiple operation parameters, including two query parameters or two path parameters;
+- optional operation parameters;
 - header or cookie parameters;
 - path-item-level parameter inheritance;
 - arrays, objects, enums, unions, nullable schemas, schema constraints, or custom parameter serialization;

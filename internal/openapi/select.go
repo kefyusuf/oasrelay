@@ -63,8 +63,8 @@ func SelectParameterlessGET(path, operationID string) (SelectedOperation, error)
 }
 
 // SelectGET loads one local document and selects the exact operationId when it
-// represents a parameterless GET or a GET with exactly one supported required
-// operation-level query or path parameter.
+// represents a parameterless GET, a GET with exactly one supported required
+// operation-level query or path parameter, or exactly one of each.
 func SelectGET(path, operationID string) (SelectedOperation, error) {
 	document, err := loadDocument(path)
 	if err != nil {
@@ -140,9 +140,9 @@ func selectGETOperation(
 			operationID,
 		)
 	}
-	if len(operation.Parameters) > 1 {
+	if len(operation.Parameters) > 2 {
 		return SelectedOperation{}, fmt.Errorf(
-			"operationId %q has %d operation parameters; this version supports at most one operation-level parameter",
+			"operationId %q has %d operation parameters; this version supports at most two operation-level parameters",
 			operationID,
 			len(operation.Parameters),
 		)
@@ -154,59 +154,97 @@ func selectGETOperation(
 		)
 	}
 
-	queryParameter, pathParameter, err := supportedOperationParameter(operationID, route, operation.Parameters)
+	queryParameter, pathParameter, err := supportedOperationParameters(operationID, route, operation.Parameters)
 	if err != nil {
 		return SelectedOperation{}, err
 	}
 	return buildSelectedOperation(document, route, method, item, operation, queryParameter, pathParameter)
 }
 
-func supportedOperationParameter(
+func supportedOperationParameters(
 	operationID, route string,
 	parameters openapi3.Parameters,
 ) (*QueryParameter, *PathParameter, error) {
-	if len(parameters) == 0 {
-		return nil, nil, nil
+	var queryRaw *openapi3.Parameter
+	var pathRaw *openapi3.Parameter
+
+	for _, parameterRef := range parameters {
+		if parameterRef == nil || parameterRef.Value == nil {
+			return nil, nil, fmt.Errorf(
+				"operationId %q has an unresolved parameter; this version requires resolved operation parameters",
+				operationID,
+			)
+		}
+
+		parameter := parameterRef.Value
+		switch parameter.In {
+		case openapi3.ParameterInQuery:
+			if queryRaw != nil {
+				return nil, nil, fmt.Errorf(
+					"operationId %q supports at most one query parameter",
+					operationID,
+				)
+			}
+			queryRaw = parameter
+
+		case openapi3.ParameterInPath:
+			if pathRaw != nil {
+				return nil, nil, fmt.Errorf(
+					"operationId %q supports at most one path parameter",
+					operationID,
+				)
+			}
+			pathRaw = parameter
+
+		default:
+			return nil, nil, fmt.Errorf(
+				"operationId %q parameter %q is in %s; this version supports query and path parameters only",
+				operationID,
+				parameter.Name,
+				parameter.In,
+			)
+		}
 	}
 
-	parameterRef := parameters[0]
-	if parameterRef == nil || parameterRef.Value == nil {
+	if queryRaw != nil && pathRaw != nil && queryRaw.Name == pathRaw.Name {
 		return nil, nil, fmt.Errorf(
-			"operationId %q has an unresolved parameter; this version requires a resolved operation parameter",
+			"operationId %q path and query parameters share parameter name %q; MCP input names must be unique",
 			operationID,
+			queryRaw.Name,
 		)
 	}
 
-	switch parameterRef.Value.In {
-	case openapi3.ParameterInQuery:
-		parameter, err := supportedQueryParameter(operationID, parameters)
-		return parameter, nil, err
-	case openapi3.ParameterInPath:
-		parameter, err := supportedPathParameter(operationID, route, parameterRef.Value)
-		return nil, parameter, err
-	default:
-		return nil, nil, fmt.Errorf(
-			"operationId %q parameter %q is in %s; this version supports query parameters only for non-path parameters; the bounded path-parameter form is also supported",
-			operationID,
-			parameterRef.Value.Name,
-			parameterRef.Value.In,
-		)
+	var queryParameter *QueryParameter
+	if queryRaw != nil {
+		parameter, err := supportedQueryParameter(operationID, queryRaw)
+		if err != nil {
+			return nil, nil, err
+		}
+		queryParameter = parameter
 	}
+
+	var pathParameter *PathParameter
+	if pathRaw != nil {
+		parameter, err := supportedPathParameter(operationID, route, pathRaw)
+		if err != nil {
+			return nil, nil, err
+		}
+		pathParameter = parameter
+	}
+
+	return queryParameter, pathParameter, nil
 }
 
-func supportedQueryParameter(operationID string, parameters openapi3.Parameters) (*QueryParameter, error) {
-	if len(parameters) == 0 {
-		return nil, nil
-	}
-
-	parameterRef := parameters[0]
-	if parameterRef == nil || parameterRef.Value == nil {
+func supportedQueryParameter(
+	operationID string,
+	parameter *openapi3.Parameter,
+) (*QueryParameter, error) {
+	if parameter == nil {
 		return nil, fmt.Errorf(
-			"operationId %q has an unresolved parameter; this version requires a resolved query parameter",
+			"operationId %q has an unresolved query parameter",
 			operationID,
 		)
 	}
-	parameter := parameterRef.Value
 	if parameter.In != openapi3.ParameterInQuery {
 		return nil, fmt.Errorf(
 			"operationId %q parameter %q is in %s; this version supports query parameters only",

@@ -39,7 +39,7 @@ type toolOutput struct {
 }
 
 type observedRequest struct {
-	line          string
+	requestURI    string
 	authorization string
 }
 
@@ -59,7 +59,7 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 		calls.Add(1)
 		select {
 		case requests <- observedRequest{
-			line:          request.Method + " " + request.URL.Path,
+			requestURI:    request.Method + " " + request.URL.RequestURI(),
 			authorization: request.Header.Get("Authorization"),
 		}:
 		default:
@@ -105,7 +105,7 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 		image,
 		"serve",
 		"--operation-id",
-		"listCustomers",
+		"getCustomerOrders",
 		"/work/openapi.yaml",
 	)
 	var stderr bytes.Buffer
@@ -136,8 +136,8 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list container tools: %v; stderr = %q", err, stderr.String())
 	}
-	if len(listed.Tools) != 1 || listed.Tools[0].Name != "listCustomers" {
-		t.Fatalf("listed tools = %#v, want exactly listCustomers", listed.Tools)
+	if len(listed.Tools) != 1 || listed.Tools[0].Name != "getCustomerOrders" {
+		t.Fatalf("listed tools = %#v, want exactly getCustomerOrders", listed.Tools)
 	}
 	listedJSON, err := json.Marshal(listed)
 	if err != nil {
@@ -148,8 +148,11 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 	}
 
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "listCustomers",
-		Arguments: map[string]any{},
+		Name: "getCustomerOrders",
+		Arguments: map[string]any{
+			"customerId": "cus_123",
+			"limit":      25,
+		},
 	})
 	if err != nil {
 		t.Fatalf("call container tool: %v; stderr = %q", err, stderr.String())
@@ -177,8 +180,12 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 
 	select {
 	case request := <-requests:
-		if request.line != "GET /api/customers" {
-			t.Fatalf("upstream request = %q, want %q", request.line, "GET /api/customers")
+		if request.requestURI != "GET /api/customers/cus_123/orders?limit=25" {
+			t.Fatalf(
+				"upstream request = %q, want %q",
+				request.requestURI,
+				"GET /api/customers/cus_123/orders?limit=25",
+			)
 		}
 		if request.authorization != "Bearer "+containerBearerToken {
 			t.Fatalf("Authorization = %q, want bearer header", request.authorization)
@@ -310,13 +317,24 @@ info:
 servers:
   - url: https://host.docker.internal:%d/api
 paths:
-  /customers:
+  /customers/{customerId}/orders:
     get:
-      operationId: listCustomers
-      summary: List customers
+      operationId: getCustomerOrders
+      summary: Get customer orders
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: true
+          schema:
+            type: integer
       responses:
         "200":
-          description: Customer collection
+          description: Customer orders
 `, port)
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write OpenAPI fixture: %v", err)
