@@ -189,6 +189,126 @@ func TestServerBindsPathThenQueryAndPreservesRawServerQuery(t *testing.T) {
 	}
 }
 
+func TestServerBindsRequiredPathWithOptionalQuery(t *testing.T) {
+	requests := make(chan string, 2)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		requests <- request.RequestURI
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer upstream.Close()
+
+	operation := combinedOperation(
+		upstream.URL + "/customers/%7BcustomerId%7D/orders",
+	)
+	operation.QueryParameter.Optional = true
+
+	server, err := New(operation, upstream.Client())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	session, cleanup := connectClient(t, server)
+	defer cleanup()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "getCustomerOrders",
+		Arguments: map[string]any{
+			"customerId": "cus_123",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool() omitted optional query error = %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("CallTool() omitted optional query IsError = true; content = %#v", result.Content)
+	}
+	if got := <-requests; got != "/customers/cus_123/orders" {
+		t.Fatalf("omitted optional query RequestURI = %q", got)
+	}
+
+	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "getCustomerOrders",
+		Arguments: map[string]any{
+			"customerId": "cus_123",
+			"limit":      25,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool() supplied optional query error = %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("CallTool() supplied optional query IsError = true; content = %#v", result.Content)
+	}
+	if got := <-requests; got != "/customers/cus_123/orders?limit=25" {
+		t.Fatalf("supplied optional query RequestURI = %q", got)
+	}
+}
+
+func TestServerRejectsInvalidPathAndOptionalQueryArgumentsBeforeUpstream(t *testing.T) {
+	tests := []struct {
+		name      string
+		arguments map[string]any
+	}{
+		{
+			name:      "missing required path",
+			arguments: map[string]any{"limit": 25},
+		},
+		{
+			name: "unknown field with path",
+			arguments: map[string]any{
+				"customerId": "cus_123",
+				"extra":      true,
+			},
+		},
+		{
+			name: "null optional query",
+			arguments: map[string]any{
+				"customerId": "cus_123",
+				"limit":      nil,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			calls := 0
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				calls++
+				_, _ = io.WriteString(w, `{}`)
+			}))
+			defer upstream.Close()
+
+			operation := combinedOperation(
+				upstream.URL + "/customers/%7BcustomerId%7D/orders",
+			)
+			operation.QueryParameter.Optional = true
+
+			server, err := New(operation, upstream.Client())
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+
+			session, cleanup := connectClient(t, server)
+			defer cleanup()
+
+			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+				Name:      "getCustomerOrders",
+				Arguments: test.arguments,
+			})
+			if err != nil {
+				t.Fatalf("CallTool() protocol error = %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("CallTool() IsError = false, want true")
+			}
+			if calls != 0 {
+				t.Fatalf("upstream calls = %d, want 0", calls)
+			}
+		})
+	}
+}
+
 func TestServerRejectsInvalidCombinedArgumentsBeforeUpstream(t *testing.T) {
 	tests := []struct {
 		name      string

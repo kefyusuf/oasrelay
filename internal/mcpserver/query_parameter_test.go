@@ -210,6 +210,124 @@ func TestServerBindsPrimitiveQueryParameter(t *testing.T) {
 	}
 }
 
+func TestServerBindsOptionalQueryWhenOmittedOrSupplied(t *testing.T) {
+	var calls atomic.Int32
+	requests := make(chan string, 2)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		calls.Add(1)
+		requests <- request.RequestURI
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer upstream.Close()
+
+	server, err := New(oasopenapi.SelectedOperation{
+		OperationID: "listCustomers",
+		Method:      http.MethodGet,
+		Path:        "/customers",
+		Endpoint:    upstream.URL + "/customers?token=a;b&mode=raw%2Fvalue",
+		QueryParameter: &oasopenapi.QueryParameter{
+			Name:     "limit",
+			Type:     "integer",
+			Optional: true,
+		},
+	}, upstream.Client())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	session, cleanup := connectClient(t, server)
+	defer cleanup()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "listCustomers",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool() omitted optional query error = %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("CallTool() omitted optional query IsError = true; content = %#v", result.Content)
+	}
+	if got := <-requests; got != "/customers?token=a;b&mode=raw%2Fvalue" {
+		t.Fatalf("omitted optional query RequestURI = %q", got)
+	}
+
+	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "listCustomers",
+		Arguments: map[string]any{
+			"limit": json.Number("25e0"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool() supplied optional query error = %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("CallTool() supplied optional query IsError = true; content = %#v", result.Content)
+	}
+	if got := <-requests; got != "/customers?token=a;b&mode=raw%2Fvalue&limit=25" {
+		t.Fatalf("supplied optional query RequestURI = %q", got)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("upstream calls = %d, want 2", calls.Load())
+	}
+}
+
+func TestServerRejectsInvalidOptionalQueryArgumentsBeforeUpstream(t *testing.T) {
+	tests := []struct {
+		name      string
+		arguments map[string]any
+	}{
+		{name: "explicit null", arguments: map[string]any{"limit": nil}},
+		{name: "wrong primitive type", arguments: map[string]any{"limit": "25"}},
+		{name: "unknown field", arguments: map[string]any{"cursor": "next"}},
+		{name: "optional plus unknown field", arguments: map[string]any{"limit": 25, "cursor": "next"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var calls atomic.Int32
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				calls.Add(1)
+				_, _ = io.WriteString(w, `{}`)
+			}))
+			defer upstream.Close()
+
+			server, err := New(oasopenapi.SelectedOperation{
+				OperationID: "listCustomers",
+				Method:      http.MethodGet,
+				Path:        "/customers",
+				Endpoint:    upstream.URL + "/customers",
+				QueryParameter: &oasopenapi.QueryParameter{
+					Name:     "limit",
+					Type:     "integer",
+					Optional: true,
+				},
+			}, upstream.Client())
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+
+			session, cleanup := connectClient(t, server)
+			defer cleanup()
+
+			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+				Name:      "listCustomers",
+				Arguments: test.arguments,
+			})
+			if err != nil {
+				t.Fatalf("CallTool() protocol error = %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("CallTool() IsError = false, want true; result = %#v", result)
+			}
+			if calls.Load() != 0 {
+				t.Fatalf("upstream calls = %d, want 0", calls.Load())
+			}
+		})
+	}
+}
+
 func TestServerRejectsInvalidQueryArgumentsBeforeUpstream(t *testing.T) {
 	tests := []struct {
 		name      string
