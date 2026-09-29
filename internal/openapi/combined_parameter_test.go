@@ -69,13 +69,58 @@ paths:
 			}
 			if got.QueryParameter == nil ||
 				got.QueryParameter.Name != "limit" ||
-				got.QueryParameter.Type != "integer" {
+				got.QueryParameter.Type != "integer" ||
+				got.QueryParameter.Optional {
 				t.Fatalf("QueryParameter = %#v", got.QueryParameter)
 			}
 			if got.Endpoint != "https://example.test/api/customers/%7BcustomerId%7D/orders?token=a;b" {
 				t.Fatalf("Endpoint = %q", got.Endpoint)
 			}
 		})
+	}
+}
+
+func TestSelectGETAcceptsRequiredPathAndOptionalQueryParameter(t *testing.T) {
+	path := writeSelectionSpec(t, `openapi: 3.0.3
+info:
+  title: Combined API
+  version: 1.0.0
+servers:
+  - url: https://example.test/api
+paths:
+  /customers/{customerId}/orders:
+    get:
+      operationId: getCustomerOrders
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Customer orders
+`)
+
+	got, err := SelectGET(path, "getCustomerOrders")
+	if err != nil {
+		t.Fatalf("SelectGET() error = %v", err)
+	}
+	if got.PathParameter == nil ||
+		got.PathParameter.Name != "customerId" ||
+		got.PathParameter.Type != "string" {
+		t.Fatalf("PathParameter = %#v", got.PathParameter)
+	}
+	if got.QueryParameter == nil ||
+		got.QueryParameter.Name != "limit" ||
+		got.QueryParameter.Type != "integer" ||
+		!got.QueryParameter.Optional {
+		t.Fatalf("QueryParameter = %#v", got.QueryParameter)
 	}
 }
 

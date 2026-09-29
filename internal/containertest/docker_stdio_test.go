@@ -52,7 +52,7 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 	assertImageUser(t, image)
 
 	var calls atomic.Int32
-	requests := make(chan observedRequest, 1)
+	requests := make(chan observedRequest, 2)
 	listener, caPath := listenTLSFixture(t)
 
 	upstream := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
@@ -147,7 +147,52 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 		t.Fatal("bearer token leaked into MCP tools/list output")
 	}
 
+	want := toolOutput{
+		Status:      http.StatusOK,
+		ContentType: "application/json",
+		Body:        `{"items":[]}`,
+	}
+
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "getCustomerOrders",
+		Arguments: map[string]any{
+			"customerId": "cus_123",
+		},
+	})
+	if err != nil {
+		t.Fatalf("call container tool without optional query: %v; stderr = %q", err, stderr.String())
+	}
+	if result.IsError {
+		t.Fatalf("container tool without optional query returned an error: %#v", result.Content)
+	}
+	if got := decodeOutput(t, result.StructuredContent); got != want {
+		t.Fatalf("tool output without optional query = %#v, want %#v", got, want)
+	}
+	resultJSON, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal tool result without optional query: %v", err)
+	}
+	if strings.Contains(string(resultJSON), containerBearerToken) {
+		t.Fatal("bearer token leaked into MCP tool output without optional query")
+	}
+
+	select {
+	case request := <-requests:
+		if request.requestURI != "GET /api/customers/cus_123/orders" {
+			t.Fatalf(
+				"upstream request without optional query = %q, want %q",
+				request.requestURI,
+				"GET /api/customers/cus_123/orders",
+			)
+		}
+		if request.authorization != "Bearer "+containerBearerToken {
+			t.Fatalf("Authorization without optional query = %q, want bearer header", request.authorization)
+		}
+	case <-ctx.Done():
+		t.Fatalf("upstream request without optional query was not observed: %v", ctx.Err())
+	}
+
+	result, err = session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "getCustomerOrders",
 		Arguments: map[string]any{
 			"customerId": "cus_123",
@@ -155,46 +200,39 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("call container tool: %v; stderr = %q", err, stderr.String())
+		t.Fatalf("call container tool with optional query: %v; stderr = %q", err, stderr.String())
 	}
 	if result.IsError {
-		t.Fatalf("container tool returned an error: %#v", result.Content)
+		t.Fatalf("container tool with optional query returned an error: %#v", result.Content)
 	}
-
-	got := decodeOutput(t, result.StructuredContent)
-	want := toolOutput{
-		Status:      http.StatusOK,
-		ContentType: "application/json",
-		Body:        `{"items":[]}`,
+	if got := decodeOutput(t, result.StructuredContent); got != want {
+		t.Fatalf("tool output with optional query = %#v, want %#v", got, want)
 	}
-	if got != want {
-		t.Fatalf("tool output = %#v, want %#v", got, want)
-	}
-	resultJSON, err := json.Marshal(result)
+	resultJSON, err = json.Marshal(result)
 	if err != nil {
-		t.Fatalf("marshal tool result: %v", err)
+		t.Fatalf("marshal tool result with optional query: %v", err)
 	}
 	if strings.Contains(string(resultJSON), containerBearerToken) {
-		t.Fatal("bearer token leaked into MCP tool output")
+		t.Fatal("bearer token leaked into MCP tool output with optional query")
 	}
 
 	select {
 	case request := <-requests:
 		if request.requestURI != "GET /api/customers/cus_123/orders?limit=25" {
 			t.Fatalf(
-				"upstream request = %q, want %q",
+				"upstream request with optional query = %q, want %q",
 				request.requestURI,
 				"GET /api/customers/cus_123/orders?limit=25",
 			)
 		}
 		if request.authorization != "Bearer "+containerBearerToken {
-			t.Fatalf("Authorization = %q, want bearer header", request.authorization)
+			t.Fatalf("Authorization with optional query = %q, want bearer header", request.authorization)
 		}
 	case <-ctx.Done():
-		t.Fatalf("upstream request was not observed: %v", ctx.Err())
+		t.Fatalf("upstream request with optional query was not observed: %v", ctx.Err())
 	}
-	if calls.Load() != 1 {
-		t.Fatalf("upstream calls = %d, want 1", calls.Load())
+	if calls.Load() != 2 {
+		t.Fatalf("upstream calls = %d, want 2", calls.Load())
 	}
 
 	if err := session.Close(); err != nil {
@@ -329,7 +367,7 @@ paths:
             type: string
         - name: limit
           in: query
-          required: true
+          required: false
           schema:
             type: integer
       responses:

@@ -12,8 +12,9 @@ import (
 // QueryParameter is the deliberately small query-parameter contract supported
 // by the one-tool MCP runtime.
 type QueryParameter struct {
-	Name string
-	Type string
+	Name     string
+	Type     string
+	Optional bool
 }
 
 // PathParameter is the deliberately small path-parameter contract supported
@@ -253,14 +254,6 @@ func supportedQueryParameter(
 			parameter.In,
 		)
 	}
-	if !parameter.Required {
-		return nil, fmt.Errorf(
-			"operationId %q query parameter %q must be required",
-			operationID,
-			parameter.Name,
-		)
-	}
-
 	serialization, err := parameter.SerializationMethod()
 	if err != nil {
 		return nil, fmt.Errorf("operationId %q query parameter %q: %w", operationID, parameter.Name, err)
@@ -282,8 +275,9 @@ func supportedQueryParameter(
 	}
 
 	return &QueryParameter{
-		Name: parameter.Name,
-		Type: (*parameter.Schema.Value.Type)[0],
+		Name:     parameter.Name,
+		Type:     (*parameter.Schema.Value.Type)[0],
+		Optional: !parameter.Required,
 	}, nil
 }
 
