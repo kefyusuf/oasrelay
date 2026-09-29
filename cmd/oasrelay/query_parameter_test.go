@@ -69,7 +69,6 @@ paths:
 	}
 }
 
-
 func TestRunServeAcceptsOneOptionalPrimitiveQueryParameter(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "openapi.yaml")
 	document := `openapi: 3.0.3
