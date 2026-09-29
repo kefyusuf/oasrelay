@@ -50,10 +50,95 @@ paths:
 			if got.QueryParameter == nil {
 				t.Fatal("QueryParameter = nil")
 			}
-			if got.QueryParameter.Name != "filter" || got.QueryParameter.Type != test.schemaType {
+			if got.QueryParameter.Name != "filter" ||
+				got.QueryParameter.Type != test.schemaType ||
+				got.QueryParameter.Optional {
 				t.Fatalf("QueryParameter = %#v", got.QueryParameter)
 			}
 		})
+	}
+}
+
+func TestSelectGETAcceptsOneOptionalPrimitiveQueryParameter(t *testing.T) {
+	tests := []struct {
+		name       string
+		schemaType string
+	}{
+		{name: "string", schemaType: "string"},
+		{name: "integer", schemaType: "integer"},
+		{name: "number", schemaType: "number"},
+		{name: "boolean", schemaType: "boolean"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := writeSelectionSpec(t, fmt.Sprintf(`openapi: 3.0.3
+info:
+  title: Query API
+  version: 1.0.0
+servers:
+  - url: https://example.test/api
+paths:
+  /customers:
+    get:
+      operationId: listCustomers
+      parameters:
+        - name: filter
+          in: query
+          schema:
+            type: %s
+      responses:
+        "200":
+          description: Customer collection
+`, test.schemaType))
+
+			got, err := SelectGET(path, "listCustomers")
+			if err != nil {
+				t.Fatalf("SelectGET() error = %v", err)
+			}
+			if got.QueryParameter == nil {
+				t.Fatal("QueryParameter = nil")
+			}
+			if got.QueryParameter.Name != "filter" ||
+				got.QueryParameter.Type != test.schemaType ||
+				!got.QueryParameter.Optional {
+				t.Fatalf("QueryParameter = %#v", got.QueryParameter)
+			}
+		})
+	}
+}
+
+func TestSelectGETTreatsExplicitRequiredFalseQueryAsOptional(t *testing.T) {
+	path := writeSelectionSpec(t, `openapi: 3.0.3
+info:
+  title: Query API
+  version: 1.0.0
+servers:
+  - url: https://example.test/api
+paths:
+  /customers:
+    get:
+      operationId: listCustomers
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Customer collection
+`)
+
+	got, err := SelectGET(path, "listCustomers")
+	if err != nil {
+		t.Fatalf("SelectGET() error = %v", err)
+	}
+	if got.QueryParameter == nil ||
+		got.QueryParameter.Name != "limit" ||
+		got.QueryParameter.Type != "integer" ||
+		!got.QueryParameter.Optional {
+		t.Fatalf("QueryParameter = %#v", got.QueryParameter)
 	}
 }
 
@@ -119,17 +204,6 @@ func TestSelectGETRejectsUnsupportedParameterShapes(t *testing.T) {
     get:
       operationId: listCustomers`,
 			message: "path-level parameters",
-		},
-		{
-			name: "optional parameter",
-			parameters: `    get:
-      operationId: listCustomers
-      parameters:
-        - name: limit
-          in: query
-          schema:
-            type: integer`,
-			message: "must be required",
 		},
 		{
 			name: "header parameter",
