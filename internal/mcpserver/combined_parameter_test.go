@@ -85,6 +85,57 @@ func TestServerExposesCombinedPathAndQueryInputSchema(t *testing.T) {
 	}
 }
 
+func TestServerExposesCombinedPathAndOptionalQueryInputSchema(t *testing.T) {
+	operation := combinedOperation("http://example.test/customers/%7BcustomerId%7D/orders")
+	operation.QueryParameter.Optional = true
+
+	server, err := New(operation, http.DefaultClient)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	session, cleanup := connectClient(t, server)
+	defer cleanup()
+
+	listed, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListTools() error = %v", err)
+	}
+	if len(listed.Tools) != 1 {
+		t.Fatalf("len(Tools) = %d, want 1", len(listed.Tools))
+	}
+
+	encoded, err := json.Marshal(listed.Tools[0].InputSchema)
+	if err != nil {
+		t.Fatalf("marshal input schema: %v", err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(encoded, &schema); err != nil {
+		t.Fatalf("unmarshal input schema: %v", err)
+	}
+
+	required, ok := schema["required"].([]any)
+	if !ok || len(required) != 1 || required[0] != "customerId" {
+		t.Fatalf("required = %#v, want [customerId]", schema["required"])
+	}
+
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("properties = %#v", schema["properties"])
+	}
+	customerID, ok := properties["customerId"].(map[string]any)
+	if !ok || customerID["type"] != "string" {
+		t.Fatalf("customerId schema = %#v", properties["customerId"])
+	}
+	limit, ok := properties["limit"].(map[string]any)
+	if !ok || limit["type"] != "integer" {
+		t.Fatalf("limit schema = %#v", properties["limit"])
+	}
+	if additional, ok := schema["additionalProperties"].(bool); !ok || additional {
+		t.Fatalf("additionalProperties = %#v, want false", schema["additionalProperties"])
+	}
+}
+
 func TestServerRejectsCombinedParametersWithSameInputName(t *testing.T) {
 	operation := combinedOperation(
 		"http://example.test/customers/%7Bid%7D/orders",

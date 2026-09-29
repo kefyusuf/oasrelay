@@ -70,6 +70,58 @@ func TestServerExposesRequiredPrimitiveQueryParameterSchema(t *testing.T) {
 	}
 }
 
+func TestServerExposesOptionalPrimitiveQueryInputSchema(t *testing.T) {
+	server, err := New(oasopenapi.SelectedOperation{
+		OperationID: "listCustomers",
+		Method:      http.MethodGet,
+		Path:        "/customers",
+		Endpoint:    "http://example.test/customers",
+		QueryParameter: &oasopenapi.QueryParameter{
+			Name:     "limit",
+			Type:     "integer",
+			Optional: true,
+		},
+	}, http.DefaultClient)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	session, cleanup := connectClient(t, server)
+	defer cleanup()
+
+	listed, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListTools() error = %v", err)
+	}
+	if len(listed.Tools) != 1 {
+		t.Fatalf("len(Tools) = %d, want 1", len(listed.Tools))
+	}
+
+	encoded, err := json.Marshal(listed.Tools[0].InputSchema)
+	if err != nil {
+		t.Fatalf("marshal input schema: %v", err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(encoded, &schema); err != nil {
+		t.Fatalf("unmarshal input schema: %v", err)
+	}
+
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("properties = %#v", schema["properties"])
+	}
+	limit, ok := properties["limit"].(map[string]any)
+	if !ok || limit["type"] != "integer" {
+		t.Fatalf("limit schema = %#v", properties["limit"])
+	}
+	if _, exists := schema["required"]; exists {
+		t.Fatalf("required = %#v, want field omitted", schema["required"])
+	}
+	if additional, ok := schema["additionalProperties"].(bool); !ok || additional {
+		t.Fatalf("additionalProperties = %#v, want false", schema["additionalProperties"])
+	}
+}
+
 func TestServerBindsPrimitiveQueryParameter(t *testing.T) {
 	tests := []struct {
 		name       string
