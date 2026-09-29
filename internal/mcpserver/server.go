@@ -134,7 +134,9 @@ func toolInputSchema(operation oasopenapi.SelectedOperation) map[string]any {
 		properties[parameter.Name] = map[string]any{
 			"type": parameter.Type,
 		}
-		required = append(required, parameter.Name)
+		if !parameter.Optional {
+			required = append(required, parameter.Name)
+		}
 	}
 
 	schema := map[string]any{
