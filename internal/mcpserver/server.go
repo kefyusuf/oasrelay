@@ -187,13 +187,6 @@ func bindPathAndQueryParameters(
 			pathParameter.Name,
 		)
 	}
-	if len(input) != 2 {
-		return "", fmt.Errorf(
-			"tool requires exactly path parameter %q and query parameter %q",
-			pathParameter.Name,
-			queryParameter.Name,
-		)
-	}
 
 	pathRaw, ok := input[pathParameter.Name]
 	if !ok {
@@ -202,12 +195,39 @@ func bindPathAndQueryParameters(
 			pathParameter.Name,
 		)
 	}
-	queryRaw, ok := input[queryParameter.Name]
-	if !ok {
-		return "", fmt.Errorf(
-			"required query parameter %q is missing",
-			queryParameter.Name,
-		)
+
+	queryRaw, queryPresent := input[queryParameter.Name]
+	if queryParameter.Optional {
+		switch {
+		case len(input) == 1 && !queryPresent:
+			return bindPathParameter(
+				operation.Endpoint,
+				pathParameter,
+				map[string]json.RawMessage{
+					pathParameter.Name: pathRaw,
+				},
+			)
+		case len(input) != 2 || !queryPresent:
+			return "", fmt.Errorf(
+				"tool requires path parameter %q and accepts only optional query parameter %q",
+				pathParameter.Name,
+				queryParameter.Name,
+			)
+		}
+	} else {
+		if len(input) != 2 {
+			return "", fmt.Errorf(
+				"tool requires exactly path parameter %q and query parameter %q",
+				pathParameter.Name,
+				queryParameter.Name,
+			)
+		}
+		if !queryPresent {
+			return "", fmt.Errorf(
+				"required query parameter %q is missing",
+				queryParameter.Name,
+			)
+		}
 	}
 
 	endpoint, err := bindPathParameter(
@@ -242,11 +262,27 @@ func bindQueryParameter(
 		return endpoint, nil
 	}
 
+	if parameter.Optional && len(input) == 0 {
+		return endpoint, nil
+	}
+
 	if len(input) != 1 {
+		if parameter.Optional {
+			return "", fmt.Errorf(
+				"tool accepts at most optional query parameter %q",
+				parameter.Name,
+			)
+		}
 		return "", fmt.Errorf("tool requires exactly query parameter %q", parameter.Name)
 	}
 	raw, ok := input[parameter.Name]
 	if !ok {
+		if parameter.Optional {
+			return "", fmt.Errorf(
+				"tool accepts only optional query parameter %q",
+				parameter.Name,
+			)
+		}
 		return "", fmt.Errorf("required query parameter %q is missing", parameter.Name)
 	}
 
