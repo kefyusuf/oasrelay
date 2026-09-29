@@ -6,7 +6,7 @@ The current scope is intentionally narrow:
 
 - inspect one local OpenAPI 3.x YAML or JSON document;
 - select one `GET` operation by its exact `operationId`;
-- support no parameters, one required primitive operation-level query parameter, one required primitive operation-level path parameter, or exactly one of each;
+- support no parameters, one primitive operation-level query parameter (required or optional), one required primitive operation-level path parameter, or exactly one path plus one query parameter;
 - expose that operation as exactly one MCP tool over stdio;
 - execute one bounded upstream HTTP request when the tool is called;
 - optionally attach one Bearer token from process environment to upstream requests;
@@ -97,9 +97,9 @@ The selected OpenAPI operation must:
 
 Server precedence is operation-level, then path-level, then document-level. The first server at the selected scope is used.
 
-### One required primitive query parameter
+### One primitive query parameter
 
-A supported query parameter must be operation-level, `in: query`, and `required: true`. Its schema must be a plain primitive `string`, `integer`, `number`, or `boolean` without additional constraints or custom serialization.
+A supported query parameter must be operation-level and use `in: query`. It may be required or optional. Its schema must be a plain primitive `string`, `integer`, `number`, or `boolean` without additional constraints or custom serialization.
 
 For example:
 
@@ -146,7 +146,47 @@ GET /customers?limit=25
 
 Query values use standard URL query escaping. Integer values are emitted in canonical base-10 form even when a mathematically integral JSON number arrives as `25.0` or `25e0`.
 
-If the selected server URL already contains a raw query string, OASRelay preserves that existing query byte-for-byte and appends only the encoded operation parameter. This avoids silently dropping RFC-valid query pairs that Go's form-style query parser does not accept.
+An optional query parameter is represented by `required: false` or by omitting the OpenAPI `required` field. For example:
+
+```yaml
+paths:
+  /customers:
+    get:
+      operationId: listCustomers
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Customer collection
+```
+
+The MCP input schema still exposes `limit` as an integer property, but it does not list it under `required`.
+
+Calling the tool with:
+
+```json
+{}
+```
+
+sends no operation-level `limit` query pair. Calling it with:
+
+```json
+{"limit": 25}
+```
+
+adds:
+
+```text
+?limit=25
+```
+
+Omission is not the same as `null`: `{"limit": null}` remains invalid because nullable schemas are unsupported. OpenAPI schema defaults also remain unsupported; OASRelay does not inject a default query value when the caller omits an optional argument.
+
+If the selected server URL already contains a raw query string, OASRelay preserves that existing query byte-for-byte. When the optional query argument is omitted, the existing query is left unchanged; when supplied, only the encoded operation parameter is appended. This avoids silently dropping RFC-valid query pairs that Go's form-style query parser does not accept.
 
 ### One required primitive path parameter
 
@@ -184,9 +224,9 @@ GET /customers/cus_123
 
 A path argument is encoded as one path segment. For example, `a/b` is sent as `a%2Fb`, so caller data cannot introduce an extra path segment. Literal `.` and `..` values are percent-encoded as data instead of being left as dot-segments. Existing server URL paths and raw query strings are preserved.
 
-### One required path + one required query parameter
+### One required path + one query parameter
 
-OASRelay also supports exactly one required primitive operation-level path parameter together with exactly one required primitive operation-level query parameter.
+OASRelay also supports exactly one required primitive operation-level path parameter together with exactly one primitive operation-level query parameter. The query parameter may be required or optional; the path parameter remains required.
 
 For example:
 
@@ -211,7 +251,7 @@ paths:
           description: Customer orders
 ```
 
-The MCP input is a closed object with both properties required:
+When the query parameter is required, the MCP input is a closed object with both properties required:
 
 ```json
 {
@@ -226,9 +266,11 @@ The upstream request is:
 GET /customers/cus_123/orders?limit=25
 ```
 
-OpenAPI declaration order does not matter. Binding is always path first and query second. Existing path escaping, raw-query preservation, primitive type validation, canonical integer serialization, and Bearer security rules remain unchanged.
+If the query parameter is optional, `customerId` remains required while the query property is omitted from the MCP `required` list. A call containing only `{"customerId": "cus_123"}` sends `GET /customers/cus_123/orders`; supplying `limit` appends the query pair.
 
-This does not enable arbitrary multiple parameters: two query parameters, two path parameters, more than two operation-level parameters, optional parameters, headers, cookies, path-item-level inheritance, and custom serialization remain unsupported.
+OpenAPI declaration order does not matter. Binding is always path first and query second when the query value is supplied. Existing path escaping, raw-query preservation, primitive type validation, canonical integer serialization, and Bearer security rules remain unchanged.
+
+This does not enable arbitrary multiple parameters: two query parameters, two path parameters, more than two operation-level parameters, optional path parameters, headers, cookies, path-item-level inheritance, and custom serialization remain unsupported.
 
 For both query and path parameters, missing required input, explicit `null`, a wrong primitive type, or an unknown input field is returned as an MCP tool error before any upstream request is sent. A parameterless operation continues to expose an empty object input schema.
 
@@ -342,11 +384,11 @@ Implemented:
 - internal reference resolution with external references blocked;
 - deterministic `GET` operation discovery;
 - exact selection of one supported `operationId`;
-- zero parameters, one required operation-level primitive query parameter, one required operation-level primitive path parameter, or exactly one of each;
-- dynamic closed MCP input schema for the selected primitive parameter or supported path-plus-query pair;
+- zero parameters, one required or optional operation-level primitive query parameter, one required operation-level primitive path parameter, or exactly one path plus one query parameter;
+- dynamic closed MCP input schema that preserves required versus optional query semantics;
 - query argument validation and URL binding;
 - safe single-segment path argument validation and binding;
-- combined path-then-query validation and binding for exactly one parameter in each location;
+- combined path-then-query validation and binding for exactly one parameter in each location, with the query required or optional;
 - canonical integer serialization;
 - preservation of existing server URL paths and raw queries;
 - optional process-level Bearer authentication through `OASRELAY_BEARER_TOKEN`, restricted to HTTPS upstreams;
@@ -354,15 +396,15 @@ Implemented:
 - one bounded upstream HTTP `GET` request;
 - structured success and non-2xx output;
 - minimal non-root Docker packaging;
-- container-level MCP stdio, combined path-plus-query binding, and Bearer forwarding acceptance testing.
+- container-level MCP stdio acceptance for required-path plus optional-query omission/presence, with Bearer forwarding.
 
 Not implemented:
 
 - arbitrary multiple operation parameters, including two query parameters or two path parameters;
-- optional operation parameters;
+- optional path parameters;
 - header or cookie parameters;
 - path-item-level parameter inheritance;
-- arrays, objects, enums, unions, nullable schemas, schema constraints, or custom parameter serialization;
+- arrays, objects, enums, unions, nullable schemas, schema constraints, schema defaults, or custom parameter serialization;
 - OpenAPI `securitySchemes` processing;
 - OAuth/OIDC, API-key, Basic, arbitrary-header, token-refresh, or secret-store authentication;
 - request bodies or non-GET execution;
