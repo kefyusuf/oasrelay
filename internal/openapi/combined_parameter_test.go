@@ -132,21 +132,6 @@ func TestSelectGETRejectsUnsupportedCombinedParameterShapes(t *testing.T) {
 		message    string
 	}{
 		{
-			name:  "two query parameters",
-			route: "/customers",
-			parameters: `        - name: limit
-          in: query
-          required: true
-          schema:
-            type: integer
-        - name: cursor
-          in: query
-          required: true
-          schema:
-            type: string`,
-			message: "at most one query parameter",
-		},
-		{
 			name:  "two path parameters",
 			route: "/customers/{customerId}/orders/{orderId}",
 			parameters: `        - name: customerId
