@@ -110,7 +110,6 @@ paths:
 	}
 }
 
-
 func TestSelectGETAcceptsTwoPrimitiveQueryParametersInDeclarationOrder(t *testing.T) {
 	tests := []struct {
 		name           string
