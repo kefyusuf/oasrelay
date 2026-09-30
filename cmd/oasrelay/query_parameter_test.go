@@ -198,4 +198,3 @@ paths:
 		t.Fatalf("second selected QueryParameter = %#v", selected.QueryParameters[1])
 	}
 }
-
