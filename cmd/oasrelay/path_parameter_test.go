@@ -61,8 +61,8 @@ paths:
 			calls,
 		)
 	}
-	if selected.QueryParameter != nil {
-		t.Fatalf("selected QueryParameter = %#v, want nil", selected.QueryParameter)
+	if len(selected.QueryParameters) != 0 {
+		t.Fatalf("selected QueryParameterss = %#v, want none", selected.QueryParameters)
 	}
 	if selected.PathParameter == nil ||
 		selected.PathParameter.Name != "customerId" ||

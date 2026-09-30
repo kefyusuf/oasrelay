@@ -61,11 +61,11 @@ paths:
 			calls,
 		)
 	}
-	if selected.QueryParameter == nil ||
-		selected.QueryParameter.Name != "limit" ||
-		selected.QueryParameter.Type != "integer" ||
-		selected.QueryParameter.Optional {
-		t.Fatalf("selected QueryParameter = %#v", selected.QueryParameter)
+	if len(selected.QueryParameters) != 1 ||
+		selected.QueryParameters[0].Name != "limit" ||
+		selected.QueryParameters[0].Type != "integer" ||
+		selected.QueryParameters[0].Optional {
+		t.Fatalf("selected QueryParameters = %#v", selected.QueryParameters)
 	}
 }
 
@@ -120,10 +120,10 @@ paths:
 			calls,
 		)
 	}
-	if selected.QueryParameter == nil ||
-		selected.QueryParameter.Name != "limit" ||
-		selected.QueryParameter.Type != "integer" ||
-		!selected.QueryParameter.Optional {
-		t.Fatalf("selected QueryParameter = %#v", selected.QueryParameter)
+	if len(selected.QueryParameters) != 1 ||
+		selected.QueryParameters[0].Name != "limit" ||
+		selected.QueryParameters[0].Type != "integer" ||
+		!selected.QueryParameters[0].Optional {
+		t.Fatalf("selected QueryParameters = %#v", selected.QueryParameters)
 	}
 }

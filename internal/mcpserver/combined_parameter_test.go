@@ -23,10 +23,10 @@ func combinedOperation(endpoint string) oasopenapi.SelectedOperation {
 			Name: "customerId",
 			Type: "string",
 		},
-		QueryParameter: &oasopenapi.QueryParameter{
+		QueryParameters: []oasopenapi.QueryParameter{{
 			Name: "limit",
 			Type: "integer",
-		},
+		}},
 	}
 }
 
@@ -87,7 +87,7 @@ func TestServerExposesCombinedPathAndQueryInputSchema(t *testing.T) {
 
 func TestServerExposesCombinedPathAndOptionalQueryInputSchema(t *testing.T) {
 	operation := combinedOperation("http://example.test/customers/%7BcustomerId%7D/orders")
-	operation.QueryParameter.Optional = true
+	operation.QueryParameters[0].Optional = true
 
 	server, err := New(operation, http.DefaultClient)
 	if err != nil {
@@ -141,7 +141,7 @@ func TestServerRejectsCombinedParametersWithSameInputName(t *testing.T) {
 		"http://example.test/customers/%7Bid%7D/orders",
 	)
 	operation.PathParameter.Name = "id"
-	operation.QueryParameter.Name = "id"
+	operation.QueryParameters[0].Name = "id"
 
 	_, err := New(operation, http.DefaultClient)
 	if err == nil || !strings.Contains(err.Error(), "share MCP input name") {
@@ -201,7 +201,7 @@ func TestServerBindsRequiredPathWithOptionalQuery(t *testing.T) {
 	operation := combinedOperation(
 		upstream.URL + "/customers/%7BcustomerId%7D/orders",
 	)
-	operation.QueryParameter.Optional = true
+	operation.QueryParameters[0].Optional = true
 
 	server, err := New(operation, upstream.Client())
 	if err != nil {
@@ -282,7 +282,7 @@ func TestServerRejectsInvalidPathAndOptionalQueryArgumentsBeforeUpstream(t *test
 			operation := combinedOperation(
 				upstream.URL + "/customers/%7BcustomerId%7D/orders",
 			)
-			operation.QueryParameter.Optional = true
+			operation.QueryParameters[0].Optional = true
 
 			server, err := New(operation, upstream.Client())
 			if err != nil {

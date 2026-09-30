@@ -44,8 +44,8 @@ paths:
 			if err != nil {
 				t.Fatalf("SelectGET() error = %v", err)
 			}
-			if got.QueryParameter != nil {
-				t.Fatalf("QueryParameter = %#v, want nil", got.QueryParameter)
+			if len(got.QueryParameters) != 0 {
+				t.Fatalf("QueryParameters = %#v, want none", got.QueryParameters)
 			}
 			if got.PathParameter == nil {
 				t.Fatal("PathParameter = nil")

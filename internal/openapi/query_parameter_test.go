@@ -47,13 +47,13 @@ paths:
 			if got.Endpoint != "https://example.test/api/customers" {
 				t.Fatalf("Endpoint = %q", got.Endpoint)
 			}
-			if got.QueryParameter == nil {
-				t.Fatal("QueryParameter = nil")
+			if len(got.QueryParameters) != 1 {
+				t.Fatalf("len(QueryParameters) = %d, want 1", len(got.QueryParameters))
 			}
-			if got.QueryParameter.Name != "filter" ||
-				got.QueryParameter.Type != test.schemaType ||
-				got.QueryParameter.Optional {
-				t.Fatalf("QueryParameter = %#v", got.QueryParameter)
+			if got.QueryParameters[0].Name != "filter" ||
+				got.QueryParameters[0].Type != test.schemaType ||
+				got.QueryParameters[0].Optional {
+				t.Fatalf("QueryParameters = %#v", got.QueryParameters)
 			}
 		})
 	}
@@ -96,13 +96,13 @@ paths:
 			if err != nil {
 				t.Fatalf("SelectGET() error = %v", err)
 			}
-			if got.QueryParameter == nil {
-				t.Fatal("QueryParameter = nil")
+			if len(got.QueryParameters) != 1 {
+				t.Fatalf("len(QueryParameters) = %d, want 1", len(got.QueryParameters))
 			}
-			if got.QueryParameter.Name != "filter" ||
-				got.QueryParameter.Type != test.schemaType ||
-				!got.QueryParameter.Optional {
-				t.Fatalf("QueryParameter = %#v", got.QueryParameter)
+			if got.QueryParameters[0].Name != "filter" ||
+				got.QueryParameters[0].Type != test.schemaType ||
+				!got.QueryParameters[0].Optional {
+				t.Fatalf("QueryParameters = %#v", got.QueryParameters)
 			}
 		})
 	}
@@ -134,11 +134,11 @@ paths:
 	if err != nil {
 		t.Fatalf("SelectGET() error = %v", err)
 	}
-	if got.QueryParameter == nil ||
-		got.QueryParameter.Name != "limit" ||
-		got.QueryParameter.Type != "integer" ||
-		!got.QueryParameter.Optional {
-		t.Fatalf("QueryParameter = %#v", got.QueryParameter)
+	if len(got.QueryParameters) != 1 ||
+		got.QueryParameters[0].Name != "limit" ||
+		got.QueryParameters[0].Type != "integer" ||
+		!got.QueryParameters[0].Optional {
+		t.Fatalf("QueryParameters = %#v", got.QueryParameters)
 	}
 }
 
@@ -147,8 +147,8 @@ func TestSelectGETKeepsParameterlessOperationsSupported(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SelectGET() error = %v", err)
 	}
-	if got.QueryParameter != nil {
-		t.Fatalf("QueryParameter = %#v, want nil", got.QueryParameter)
+	if len(got.QueryParameters) != 0 {
+		t.Fatalf("QueryParameters = %#v, want none", got.QueryParameters)
 	}
 }
 
@@ -182,8 +182,8 @@ paths:
 	if err != nil {
 		t.Fatalf("SelectGET() error = %v", err)
 	}
-	if got.QueryParameter == nil || got.QueryParameter.Name != "limit" || got.QueryParameter.Type != "integer" {
-		t.Fatalf("QueryParameter = %#v", got.QueryParameter)
+	if len(got.QueryParameters) != 1 || got.QueryParameters[0].Name != "limit" || got.QueryParameters[0].Type != "integer" {
+		t.Fatalf("QueryParameters = %#v", got.QueryParameters)
 	}
 }
 

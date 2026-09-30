@@ -20,10 +20,10 @@ func TestServerExposesRequiredPrimitiveQueryParameterSchema(t *testing.T) {
 		Method:      http.MethodGet,
 		Path:        "/customers",
 		Endpoint:    "http://example.test/customers",
-		QueryParameter: &oasopenapi.QueryParameter{
+		QueryParameters: []oasopenapi.QueryParameter{{
 			Name: "limit",
 			Type: "integer",
-		},
+		}},
 	}, http.DefaultClient)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -76,11 +76,11 @@ func TestServerExposesOptionalPrimitiveQueryInputSchema(t *testing.T) {
 		Method:      http.MethodGet,
 		Path:        "/customers",
 		Endpoint:    "http://example.test/customers",
-		QueryParameter: &oasopenapi.QueryParameter{
+		QueryParameters: []oasopenapi.QueryParameter{{
 			Name:     "limit",
 			Type:     "integer",
 			Optional: true,
-		},
+		}},
 	}, http.DefaultClient)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -176,10 +176,10 @@ func TestServerBindsPrimitiveQueryParameter(t *testing.T) {
 				Method:      http.MethodGet,
 				Path:        "/customers",
 				Endpoint:    upstream.URL + "/customers",
-				QueryParameter: &oasopenapi.QueryParameter{
+				QueryParameters: []oasopenapi.QueryParameter{{
 					Name: "filter",
 					Type: test.paramType,
-				},
+				}},
 			}, upstream.Client())
 			if err != nil {
 				t.Fatalf("New() error = %v", err)
@@ -226,11 +226,11 @@ func TestServerBindsOptionalQueryWhenOmittedOrSupplied(t *testing.T) {
 		Method:      http.MethodGet,
 		Path:        "/customers",
 		Endpoint:    upstream.URL + "/customers?token=a;b&mode=raw%2Fvalue",
-		QueryParameter: &oasopenapi.QueryParameter{
+		QueryParameters: []oasopenapi.QueryParameter{{
 			Name:     "limit",
 			Type:     "integer",
 			Optional: true,
-		},
+		}},
 	}, upstream.Client())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -298,11 +298,11 @@ func TestServerRejectsInvalidOptionalQueryArgumentsBeforeUpstream(t *testing.T) 
 				Method:      http.MethodGet,
 				Path:        "/customers",
 				Endpoint:    upstream.URL + "/customers",
-				QueryParameter: &oasopenapi.QueryParameter{
+				QueryParameters: []oasopenapi.QueryParameter{{
 					Name:     "limit",
 					Type:     "integer",
 					Optional: true,
-				},
+				}},
 			}, upstream.Client())
 			if err != nil {
 				t.Fatalf("New() error = %v", err)
@@ -352,10 +352,10 @@ func TestServerRejectsInvalidQueryArgumentsBeforeUpstream(t *testing.T) {
 				Method:      http.MethodGet,
 				Path:        "/customers",
 				Endpoint:    upstream.URL + "/customers",
-				QueryParameter: &oasopenapi.QueryParameter{
+				QueryParameters: []oasopenapi.QueryParameter{{
 					Name: "limit",
 					Type: "integer",
-				},
+				}},
 			}, upstream.Client())
 			if err != nil {
 				t.Fatalf("New() error = %v", err)
