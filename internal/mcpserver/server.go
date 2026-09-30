@@ -35,12 +35,15 @@ func New(operation oasopenapi.SelectedOperation, client *http.Client) (*mcp.Serv
 	if client == nil {
 		return nil, fmt.Errorf("HTTP client is required")
 	}
-	if operation.QueryParameter != nil &&
+	if len(operation.QueryParameters) > 1 {
+		return nil, fmt.Errorf("operation exposes %d query parameters; this runtime currently supports at most one", len(operation.QueryParameters))
+	}
+	if len(operation.QueryParameters) == 1 &&
 		operation.PathParameter != nil &&
-		operation.QueryParameter.Name == operation.PathParameter.Name {
+		operation.QueryParameters[0].Name == operation.PathParameter.Name {
 		return nil, fmt.Errorf(
 			"path and query parameters share MCP input name %q",
-			operation.QueryParameter.Name,
+			operation.QueryParameters[0].Name,
 		)
 	}
 	if err := validateMCPToolName(operation.OperationID); err != nil {
@@ -130,7 +133,8 @@ func toolInputSchema(operation oasopenapi.SelectedOperation) map[string]any {
 		required = append(required, parameter.Name)
 	}
 
-	if parameter := operation.QueryParameter; parameter != nil {
+	if len(operation.QueryParameters) == 1 {
+		parameter := operation.QueryParameters[0]
 		properties[parameter.Name] = map[string]any{
 			"type": parameter.Type,
 		}
@@ -155,7 +159,7 @@ func bindOperationArguments(
 	input map[string]json.RawMessage,
 ) (string, error) {
 	switch {
-	case operation.PathParameter != nil && operation.QueryParameter != nil:
+	case operation.PathParameter != nil && len(operation.QueryParameters) == 1:
 		return bindPathAndQueryParameters(operation, input)
 	case operation.PathParameter != nil:
 		return bindPathParameter(
@@ -163,12 +167,14 @@ func bindOperationArguments(
 			operation.PathParameter,
 			input,
 		)
-	default:
+	case len(operation.QueryParameters) == 1:
 		return bindQueryParameter(
 			operation.Endpoint,
-			operation.QueryParameter,
+			&operation.QueryParameters[0],
 			input,
 		)
+	default:
+		return bindQueryParameter(operation.Endpoint, nil, input)
 	}
 }
 
@@ -177,10 +183,10 @@ func bindPathAndQueryParameters(
 	input map[string]json.RawMessage,
 ) (string, error) {
 	pathParameter := operation.PathParameter
-	queryParameter := operation.QueryParameter
-	if pathParameter == nil || queryParameter == nil {
+	if pathParameter == nil || len(operation.QueryParameters) != 1 {
 		return "", fmt.Errorf("combined binding requires one path and one query parameter")
 	}
+	queryParameter := &operation.QueryParameters[0]
 	if pathParameter.Name == queryParameter.Name {
 		return "", fmt.Errorf(
 			"path and query parameters share MCP input name %q",

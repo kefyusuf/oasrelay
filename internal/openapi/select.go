@@ -27,14 +27,14 @@ type PathParameter struct {
 // SelectedOperation is the validated project-owned operation required by the
 // one-tool MCP runtime.
 type SelectedOperation struct {
-	OperationID    string
-	Method         string
-	Path           string
-	Summary        string
-	Description    string
-	Endpoint       string
-	QueryParameter *QueryParameter
-	PathParameter  *PathParameter
+	OperationID     string
+	Method          string
+	Path            string
+	Summary         string
+	Description     string
+	Endpoint        string
+	QueryParameters []QueryParameter
+	PathParameter   *PathParameter
 }
 
 // SelectParameterlessGET loads one local document and selects the exact
@@ -155,17 +155,17 @@ func selectGETOperation(
 		)
 	}
 
-	queryParameter, pathParameter, err := supportedOperationParameters(operationID, route, operation.Parameters)
+	queryParameters, pathParameter, err := supportedOperationParameters(operationID, route, operation.Parameters)
 	if err != nil {
 		return SelectedOperation{}, err
 	}
-	return buildSelectedOperation(document, route, method, item, operation, queryParameter, pathParameter)
+	return buildSelectedOperation(document, route, method, item, operation, queryParameters, pathParameter)
 }
 
 func supportedOperationParameters(
 	operationID, route string,
 	parameters openapi3.Parameters,
-) (*QueryParameter, *PathParameter, error) {
+) ([]QueryParameter, *PathParameter, error) {
 	var queryRaw *openapi3.Parameter
 	var pathRaw *openapi3.Parameter
 
@@ -215,13 +215,13 @@ func supportedOperationParameters(
 		)
 	}
 
-	var queryParameter *QueryParameter
+	var queryParameters []QueryParameter
 	if queryRaw != nil {
 		parameter, err := supportedQueryParameter(operationID, queryRaw)
 		if err != nil {
 			return nil, nil, err
 		}
-		queryParameter = parameter
+		queryParameters = append(queryParameters, *parameter)
 	}
 
 	var pathParameter *PathParameter
@@ -233,7 +233,7 @@ func supportedOperationParameters(
 		pathParameter = parameter
 	}
 
-	return queryParameter, pathParameter, nil
+	return queryParameters, pathParameter, nil
 }
 
 func supportedQueryParameter(
@@ -381,7 +381,7 @@ func buildSelectedOperation(
 	route, method string,
 	item *openapi3.PathItem,
 	operation *openapi3.Operation,
-	queryParameter *QueryParameter,
+	queryParameters []QueryParameter,
 	pathParameter *PathParameter,
 ) (SelectedOperation, error) {
 	operationID := operation.OperationID
@@ -404,9 +404,9 @@ func buildSelectedOperation(
 		Path:           route,
 		Summary:        operation.Summary,
 		Description:    operation.Description,
-		Endpoint:       endpoint,
-		QueryParameter: queryParameter,
-		PathParameter:  pathParameter,
+		Endpoint:        endpoint,
+		QueryParameters: queryParameters,
+		PathParameter:   pathParameter,
 	}, nil
 }
 
