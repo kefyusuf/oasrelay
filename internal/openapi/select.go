@@ -399,11 +399,11 @@ func buildSelectedOperation(
 	}
 
 	return SelectedOperation{
-		OperationID:    operationID,
-		Method:         http.MethodGet,
-		Path:           route,
-		Summary:        operation.Summary,
-		Description:    operation.Description,
+		OperationID:     operationID,
+		Method:          http.MethodGet,
+		Path:            route,
+		Summary:         operation.Summary,
+		Description:     operation.Description,
 		Endpoint:        endpoint,
 		QueryParameters: queryParameters,
 		PathParameter:   pathParameter,
