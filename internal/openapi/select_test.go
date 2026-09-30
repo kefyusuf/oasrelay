@@ -2,9 +2,9 @@ package openapi
 
 import (
 	"net/http"
-	"reflect"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
