@@ -44,4 +44,3 @@ func TestBindQueryParametersPreservesEndpointWhenAllOptionalQueriesAreOmitted(t 
 		t.Fatalf("bound endpoint = %q, want unchanged %q", got, endpoint)
 	}
 }
-

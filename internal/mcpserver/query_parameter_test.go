@@ -782,4 +782,3 @@ func TestServerRejectsMalformedQueryParameterModels(t *testing.T) {
 		})
 	}
 }
-

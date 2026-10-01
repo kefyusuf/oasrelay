@@ -413,4 +413,3 @@ func TestServerRejectsPathWithTwoQueryParameters(t *testing.T) {
 		t.Fatalf("New() error = %v, want path-plus-two-query rejection", err)
 	}
 }
-
