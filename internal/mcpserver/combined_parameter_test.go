@@ -398,3 +398,19 @@ func TestServerRejectsInvalidCombinedArgumentsBeforeUpstream(t *testing.T) {
 		})
 	}
 }
+
+func TestServerRejectsPathWithTwoQueryParameters(t *testing.T) {
+	operation := combinedOperation(
+		"http://example.test/customers/%7BcustomerId%7D/orders",
+	)
+	operation.QueryParameters = append(
+		operation.QueryParameters,
+		oasopenapi.QueryParameter{Name: "cursor", Type: "string"},
+	)
+
+	_, err := New(operation, http.DefaultClient)
+	if err == nil || !strings.Contains(err.Error(), "path with at most one query parameter") {
+		t.Fatalf("New() error = %v, want path-plus-two-query rejection", err)
+	}
+}
+
