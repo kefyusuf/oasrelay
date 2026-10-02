@@ -2,9 +2,9 @@
 
 ## Status
 
-Approved architectural design direction. This document persists the bounded product/scope decision before implementation planning.
+Implemented on branch `feat/second-primitive-query-parameter` in [PR #19](https://github.com/kefyusuf/oasrelay/pull/19). The PR is open and ready for review; the feature has not been merged into `main`.
 
-Implementation has not started.
+Implementation and acceptance checkpoint: `1d1d277cc506710a1ca0f4c9f3b20dd0d7be817f`. Both Go verification and Docker acceptance passed in [CI run 36975916031](https://github.com/kefyusuf/oasrelay/actions/runs/36975916031). See the implementation plan's execution checkpoint for continuation state. The context below describes the baseline before this feature.
 
 ## Context
 

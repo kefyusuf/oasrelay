@@ -10,6 +10,30 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-30-second-primitive-query-parameter-design.md`
 
+## Execution Checkpoint — 2026-10-02
+
+Implementation is complete on `feat/second-primitive-query-parameter`. [PR #19](https://github.com/kefyusuf/oasrelay/pull/19) is open and ready for review, not merged. The detailed steps below retain the original approved plan; use this checkpoint to determine remaining work.
+
+- [x] Task 1: bounded query model migration.
+- [x] Task 2: selection of two primitive query parameters.
+- [x] Task 3: atomic MCP schema and query binding support.
+- [x] Task 4: dedicated Docker acceptance, retaining the existing path-plus-query test.
+- [x] Task 5: README and final Go/Docker verification.
+
+Verified implementation checkpoint: `1d1d277cc506710a1ca0f4c9f3b20dd0d7be817f`. [CI run 36975916031](https://github.com/kefyusuf/oasrelay/actions/runs/36975916031) passed both `verify` and `docker-acceptance` on this exact commit. Local `go test ./...`, `go vet ./...`, inspect smoke, container-tagged compilation/vet, and module consistency also passed. Docker is unavailable on the current Windows host; real container execution was verified in CI.
+
+Implementation commits:
+
+- Task 1 final model migration: `910c6d1`.
+- Task 2 selector: `908b31f`.
+- Task 3 MCP schema/binding: `e2e310d`.
+- Task 4 Docker acceptance: `21e2f5e`.
+- Task 5 README: `1d1d277`.
+
+The PR records earlier TDD RED/GREEN evidence. An independent source review of `1d1d277` found no actionable correctness or regression issues in selection, schema, binding, validation, or the preserved path/query/Bearer boundaries; that review did not rerun tests. Automatic review services did not provide a substantive code review: CodeRabbit skipped review and Qodo reported reviews paused. The remaining boundary is maintainer review and merge. No new feature scope or merge is authorized by this checkpoint.
+
+Before resuming, verify the checkout branch, HEAD, working-tree changes, and PR state. Do not repeat Tasks 1–5 simply because the original step checkboxes remain unchecked.
+
 ## Global Constraints
 
 - GET only.
