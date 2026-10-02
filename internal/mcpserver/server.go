@@ -35,13 +35,27 @@ func New(operation oasopenapi.SelectedOperation, client *http.Client) (*mcp.Serv
 	if client == nil {
 		return nil, fmt.Errorf("HTTP client is required")
 	}
-	if operation.QueryParameter != nil &&
-		operation.PathParameter != nil &&
-		operation.QueryParameter.Name == operation.PathParameter.Name {
+	if len(operation.QueryParameters) > 2 {
 		return nil, fmt.Errorf(
-			"path and query parameters share MCP input name %q",
-			operation.QueryParameter.Name,
+			"operation exposes %d query parameters; this runtime supports at most two query parameters",
+			len(operation.QueryParameters),
 		)
+	}
+	if operation.PathParameter != nil && len(operation.QueryParameters) > 1 {
+		return nil, fmt.Errorf("operation may expose a path with at most one query parameter")
+	}
+	queryNames := make(map[string]struct{}, len(operation.QueryParameters))
+	for _, parameter := range operation.QueryParameters {
+		if _, exists := queryNames[parameter.Name]; exists {
+			return nil, fmt.Errorf("duplicate query parameter name %q", parameter.Name)
+		}
+		queryNames[parameter.Name] = struct{}{}
+		if operation.PathParameter != nil && parameter.Name == operation.PathParameter.Name {
+			return nil, fmt.Errorf(
+				"path and query parameters share MCP input name %q",
+				parameter.Name,
+			)
+		}
 	}
 	if err := validateMCPToolName(operation.OperationID); err != nil {
 		return nil, fmt.Errorf(
@@ -130,7 +144,7 @@ func toolInputSchema(operation oasopenapi.SelectedOperation) map[string]any {
 		required = append(required, parameter.Name)
 	}
 
-	if parameter := operation.QueryParameter; parameter != nil {
+	for _, parameter := range operation.QueryParameters {
 		properties[parameter.Name] = map[string]any{
 			"type": parameter.Type,
 		}
@@ -155,7 +169,7 @@ func bindOperationArguments(
 	input map[string]json.RawMessage,
 ) (string, error) {
 	switch {
-	case operation.PathParameter != nil && operation.QueryParameter != nil:
+	case operation.PathParameter != nil && len(operation.QueryParameters) != 0:
 		return bindPathAndQueryParameters(operation, input)
 	case operation.PathParameter != nil:
 		return bindPathParameter(
@@ -164,9 +178,9 @@ func bindOperationArguments(
 			input,
 		)
 	default:
-		return bindQueryParameter(
+		return bindQueryParameters(
 			operation.Endpoint,
-			operation.QueryParameter,
+			operation.QueryParameters,
 			input,
 		)
 	}
@@ -177,15 +191,8 @@ func bindPathAndQueryParameters(
 	input map[string]json.RawMessage,
 ) (string, error) {
 	pathParameter := operation.PathParameter
-	queryParameter := operation.QueryParameter
-	if pathParameter == nil || queryParameter == nil {
+	if pathParameter == nil || len(operation.QueryParameters) != 1 {
 		return "", fmt.Errorf("combined binding requires one path and one query parameter")
-	}
-	if pathParameter.Name == queryParameter.Name {
-		return "", fmt.Errorf(
-			"path and query parameters share MCP input name %q",
-			pathParameter.Name,
-		)
 	}
 
 	pathRaw, ok := input[pathParameter.Name]
@@ -194,40 +201,6 @@ func bindPathAndQueryParameters(
 			"required path parameter %q is missing",
 			pathParameter.Name,
 		)
-	}
-
-	queryRaw, queryPresent := input[queryParameter.Name]
-	if queryParameter.Optional {
-		switch {
-		case len(input) == 1 && !queryPresent:
-			return bindPathParameter(
-				operation.Endpoint,
-				pathParameter,
-				map[string]json.RawMessage{
-					pathParameter.Name: pathRaw,
-				},
-			)
-		case len(input) != 2 || !queryPresent:
-			return "", fmt.Errorf(
-				"tool requires path parameter %q and accepts only optional query parameter %q",
-				pathParameter.Name,
-				queryParameter.Name,
-			)
-		}
-	} else {
-		if len(input) != 2 {
-			return "", fmt.Errorf(
-				"tool requires exactly path parameter %q and query parameter %q",
-				pathParameter.Name,
-				queryParameter.Name,
-			)
-		}
-		if !queryPresent {
-			return "", fmt.Errorf(
-				"required query parameter %q is missing",
-				queryParameter.Name,
-			)
-		}
 	}
 
 	endpoint, err := bindPathParameter(
@@ -241,13 +214,87 @@ func bindPathAndQueryParameters(
 		return "", err
 	}
 
-	return bindQueryParameter(
+	queryInput := make(map[string]json.RawMessage, len(input)-1)
+	for name, raw := range input {
+		if name != pathParameter.Name {
+			queryInput[name] = raw
+		}
+	}
+
+	return bindQueryParameters(
 		endpoint,
-		queryParameter,
-		map[string]json.RawMessage{
-			queryParameter.Name: queryRaw,
-		},
+		operation.QueryParameters,
+		queryInput,
 	)
+}
+
+func bindQueryParameters(
+	endpoint string,
+	parameters []oasopenapi.QueryParameter,
+	input map[string]json.RawMessage,
+) (string, error) {
+	if len(parameters) > 2 {
+		return "", fmt.Errorf(
+			"query binding supports at most two query parameters, got %d",
+			len(parameters),
+		)
+	}
+	if len(parameters) == 0 {
+		if len(input) != 0 {
+			return "", fmt.Errorf("parameterless tool does not accept arguments")
+		}
+		return endpoint, nil
+	}
+
+	selected := make(map[string]struct{}, len(parameters))
+	for _, parameter := range parameters {
+		if _, exists := selected[parameter.Name]; exists {
+			return "", fmt.Errorf("duplicate query parameter name %q", parameter.Name)
+		}
+		selected[parameter.Name] = struct{}{}
+	}
+	for name := range input {
+		if _, ok := selected[name]; !ok {
+			return "", fmt.Errorf("unknown query parameter %q", name)
+		}
+	}
+
+	encodedParameters := make([]string, 0, len(parameters))
+	for _, parameter := range parameters {
+		raw, present := input[parameter.Name]
+		if !present {
+			if parameter.Optional {
+				continue
+			}
+			return "", fmt.Errorf("required query parameter %q is missing", parameter.Name)
+		}
+
+		value, err := primitiveQueryValue(parameter.Type, raw)
+		if err != nil {
+			return "", fmt.Errorf("query parameter %q: %w", parameter.Name, err)
+		}
+		encodedParameters = append(
+			encodedParameters,
+			url.Values{parameter.Name: []string{value}}.Encode(),
+		)
+	}
+
+	if len(encodedParameters) == 0 {
+		return endpoint, nil
+	}
+
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return "", fmt.Errorf("parse endpoint: %w", err)
+	}
+	for _, encodedParameter := range encodedParameters {
+		if parsed.RawQuery == "" {
+			parsed.RawQuery = encodedParameter
+		} else {
+			parsed.RawQuery += "&" + encodedParameter
+		}
+	}
+	return parsed.String(), nil
 }
 
 func bindQueryParameter(
@@ -256,52 +303,13 @@ func bindQueryParameter(
 	input map[string]json.RawMessage,
 ) (string, error) {
 	if parameter == nil {
-		if len(input) != 0 {
-			return "", fmt.Errorf("parameterless tool does not accept arguments")
-		}
-		return endpoint, nil
+		return bindQueryParameters(endpoint, nil, input)
 	}
-
-	if parameter.Optional && len(input) == 0 {
-		return endpoint, nil
-	}
-
-	if len(input) != 1 {
-		if parameter.Optional {
-			return "", fmt.Errorf(
-				"tool accepts at most optional query parameter %q",
-				parameter.Name,
-			)
-		}
-		return "", fmt.Errorf("tool requires exactly query parameter %q", parameter.Name)
-	}
-	raw, ok := input[parameter.Name]
-	if !ok {
-		if parameter.Optional {
-			return "", fmt.Errorf(
-				"tool accepts only optional query parameter %q",
-				parameter.Name,
-			)
-		}
-		return "", fmt.Errorf("required query parameter %q is missing", parameter.Name)
-	}
-
-	value, err := primitiveQueryValue(parameter.Type, raw)
-	if err != nil {
-		return "", fmt.Errorf("query parameter %q: %w", parameter.Name, err)
-	}
-
-	parsed, err := url.Parse(endpoint)
-	if err != nil {
-		return "", fmt.Errorf("parse endpoint: %w", err)
-	}
-	encodedParameter := url.Values{parameter.Name: []string{value}}.Encode()
-	if parsed.RawQuery == "" {
-		parsed.RawQuery = encodedParameter
-	} else {
-		parsed.RawQuery += "&" + encodedParameter
-	}
-	return parsed.String(), nil
+	return bindQueryParameters(
+		endpoint,
+		[]oasopenapi.QueryParameter{*parameter},
+		input,
+	)
 }
 
 func bindPathParameter(

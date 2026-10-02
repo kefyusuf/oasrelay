@@ -28,3 +28,19 @@ func TestBindQueryParameterPreservesExistingRawQuery(t *testing.T) {
 		t.Fatalf("bound endpoint = %q, want raw query suffix %q", got, wantQuery)
 	}
 }
+
+func TestBindQueryParametersPreservesEndpointWhenAllOptionalQueriesAreOmitted(t *testing.T) {
+	endpoint := "https://example.test/customers?token=a;b&mode=raw%2Fvalue"
+	parameters := []oasopenapi.QueryParameter{
+		{Name: "limit", Type: "integer", Optional: true},
+		{Name: "filter", Type: "string", Optional: true},
+	}
+
+	got, err := bindQueryParameters(endpoint, parameters, map[string]json.RawMessage{})
+	if err != nil {
+		t.Fatalf("bindQueryParameters() error = %v", err)
+	}
+	if got != endpoint {
+		t.Fatalf("bound endpoint = %q, want unchanged %q", got, endpoint)
+	}
+}

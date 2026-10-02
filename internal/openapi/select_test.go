@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -22,7 +23,7 @@ func TestSelectParameterlessGETUsesDocumentServer(t *testing.T) {
 		Description: "Returns the current customer collection.",
 		Endpoint:    "https://document.example.test/api/customers",
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("SelectedOperation = %#v, want %#v", got, want)
 	}
 }

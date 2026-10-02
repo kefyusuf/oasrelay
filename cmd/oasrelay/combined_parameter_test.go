@@ -69,7 +69,7 @@ paths:
 	if selected.PathParameter == nil || selected.PathParameter.Name != "customerId" {
 		t.Fatalf("selected PathParameter = %#v", selected.PathParameter)
 	}
-	if selected.QueryParameter == nil || selected.QueryParameter.Name != "limit" {
-		t.Fatalf("selected QueryParameter = %#v", selected.QueryParameter)
+	if len(selected.QueryParameters) != 1 || selected.QueryParameters[0].Name != "limit" {
+		t.Fatalf("selected QueryParameters = %#v", selected.QueryParameters)
 	}
 }

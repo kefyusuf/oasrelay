@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/getkin/kin-openapi/openapi3"
 )
 
 func TestSelectGETAcceptsOneRequiredPrimitiveQueryParameter(t *testing.T) {
@@ -47,13 +49,13 @@ paths:
 			if got.Endpoint != "https://example.test/api/customers" {
 				t.Fatalf("Endpoint = %q", got.Endpoint)
 			}
-			if got.QueryParameter == nil {
-				t.Fatal("QueryParameter = nil")
+			if len(got.QueryParameters) != 1 {
+				t.Fatalf("len(QueryParameters) = %d, want 1", len(got.QueryParameters))
 			}
-			if got.QueryParameter.Name != "filter" ||
-				got.QueryParameter.Type != test.schemaType ||
-				got.QueryParameter.Optional {
-				t.Fatalf("QueryParameter = %#v", got.QueryParameter)
+			if got.QueryParameters[0].Name != "filter" ||
+				got.QueryParameters[0].Type != test.schemaType ||
+				got.QueryParameters[0].Optional {
+				t.Fatalf("QueryParameters = %#v", got.QueryParameters)
 			}
 		})
 	}
@@ -96,15 +98,98 @@ paths:
 			if err != nil {
 				t.Fatalf("SelectGET() error = %v", err)
 			}
-			if got.QueryParameter == nil {
-				t.Fatal("QueryParameter = nil")
+			if len(got.QueryParameters) != 1 {
+				t.Fatalf("len(QueryParameters) = %d, want 1", len(got.QueryParameters))
 			}
-			if got.QueryParameter.Name != "filter" ||
-				got.QueryParameter.Type != test.schemaType ||
-				!got.QueryParameter.Optional {
-				t.Fatalf("QueryParameter = %#v", got.QueryParameter)
+			if got.QueryParameters[0].Name != "filter" ||
+				got.QueryParameters[0].Type != test.schemaType ||
+				!got.QueryParameters[0].Optional {
+				t.Fatalf("QueryParameters = %#v", got.QueryParameters)
 			}
 		})
+	}
+}
+
+func TestSelectGETAcceptsTwoPrimitiveQueryParametersInDeclarationOrder(t *testing.T) {
+	tests := []struct {
+		name           string
+		limitRequired  bool
+		cursorRequired bool
+	}{
+		{name: "required plus required", limitRequired: true, cursorRequired: true},
+		{name: "required plus optional", limitRequired: true, cursorRequired: false},
+		{name: "optional plus required", limitRequired: false, cursorRequired: true},
+		{name: "optional plus optional", limitRequired: false, cursorRequired: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := writeSelectionSpec(t, fmt.Sprintf(`openapi: 3.0.3
+info:
+  title: Query API
+  version: 1.0.0
+servers:
+  - url: https://example.test/api
+paths:
+  /customers:
+    get:
+      operationId: listCustomers
+      parameters:
+        - name: limit
+          in: query
+          required: %t
+          schema:
+            type: integer
+        - name: cursor
+          in: query
+          required: %t
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Customer collection
+`, test.limitRequired, test.cursorRequired))
+
+			got, err := SelectGET(path, "listCustomers")
+			if err != nil {
+				t.Fatalf("SelectGET() error = %v", err)
+			}
+			if len(got.QueryParameters) != 2 {
+				t.Fatalf("len(QueryParameters) = %d, want 2", len(got.QueryParameters))
+			}
+			if got.QueryParameters[0].Name != "limit" ||
+				got.QueryParameters[0].Type != "integer" ||
+				got.QueryParameters[0].Optional == test.limitRequired {
+				t.Fatalf("first QueryParameter = %#v", got.QueryParameters[0])
+			}
+			if got.QueryParameters[1].Name != "cursor" ||
+				got.QueryParameters[1].Type != "string" ||
+				got.QueryParameters[1].Optional == test.cursorRequired {
+				t.Fatalf("second QueryParameter = %#v", got.QueryParameters[1])
+			}
+		})
+	}
+}
+
+func TestSupportedOperationParametersRejectsDuplicateQueryNames(t *testing.T) {
+	parameters := openapi3.Parameters{
+		&openapi3.ParameterRef{Value: &openapi3.Parameter{
+			Name:     "filter",
+			In:       openapi3.ParameterInQuery,
+			Required: true,
+			Schema:   &openapi3.SchemaRef{Value: openapi3.NewStringSchema()},
+		}},
+		&openapi3.ParameterRef{Value: &openapi3.Parameter{
+			Name:     "filter",
+			In:       openapi3.ParameterInQuery,
+			Required: false,
+			Schema:   &openapi3.SchemaRef{Value: openapi3.NewStringSchema()},
+		}},
+	}
+
+	_, _, err := supportedOperationParameters("listCustomers", "/customers", parameters)
+	if err == nil || !strings.Contains(err.Error(), "duplicate query parameter name") {
+		t.Fatalf("error = %v, want duplicate-query-name rejection", err)
 	}
 }
 
@@ -134,11 +219,11 @@ paths:
 	if err != nil {
 		t.Fatalf("SelectGET() error = %v", err)
 	}
-	if got.QueryParameter == nil ||
-		got.QueryParameter.Name != "limit" ||
-		got.QueryParameter.Type != "integer" ||
-		!got.QueryParameter.Optional {
-		t.Fatalf("QueryParameter = %#v", got.QueryParameter)
+	if len(got.QueryParameters) != 1 ||
+		got.QueryParameters[0].Name != "limit" ||
+		got.QueryParameters[0].Type != "integer" ||
+		!got.QueryParameters[0].Optional {
+		t.Fatalf("QueryParameters = %#v", got.QueryParameters)
 	}
 }
 
@@ -147,8 +232,8 @@ func TestSelectGETKeepsParameterlessOperationsSupported(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SelectGET() error = %v", err)
 	}
-	if got.QueryParameter != nil {
-		t.Fatalf("QueryParameter = %#v, want nil", got.QueryParameter)
+	if len(got.QueryParameters) != 0 {
+		t.Fatalf("QueryParameters = %#v, want none", got.QueryParameters)
 	}
 }
 
@@ -182,8 +267,8 @@ paths:
 	if err != nil {
 		t.Fatalf("SelectGET() error = %v", err)
 	}
-	if got.QueryParameter == nil || got.QueryParameter.Name != "limit" || got.QueryParameter.Type != "integer" {
-		t.Fatalf("QueryParameter = %#v", got.QueryParameter)
+	if len(got.QueryParameters) != 1 || got.QueryParameters[0].Name != "limit" || got.QueryParameters[0].Type != "integer" {
+		t.Fatalf("QueryParameters = %#v", got.QueryParameters)
 	}
 }
 
@@ -218,7 +303,7 @@ func TestSelectGETRejectsUnsupportedParameterShapes(t *testing.T) {
 			message: "supports query and path parameters only",
 		},
 		{
-			name: "multiple parameters",
+			name: "three query parameters",
 			parameters: `    get:
       operationId: listCustomers
       parameters:
@@ -231,8 +316,13 @@ func TestSelectGETRejectsUnsupportedParameterShapes(t *testing.T) {
           in: query
           required: true
           schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          schema:
             type: string`,
-			message: "at most one query parameter",
+			message: "supports at most two operation-level parameters",
 		},
 		{
 			name: "array schema",

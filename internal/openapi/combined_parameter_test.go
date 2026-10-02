@@ -67,11 +67,11 @@ paths:
 				got.PathParameter.Type != "string" {
 				t.Fatalf("PathParameter = %#v", got.PathParameter)
 			}
-			if got.QueryParameter == nil ||
-				got.QueryParameter.Name != "limit" ||
-				got.QueryParameter.Type != "integer" ||
-				got.QueryParameter.Optional {
-				t.Fatalf("QueryParameter = %#v", got.QueryParameter)
+			if len(got.QueryParameters) != 1 ||
+				got.QueryParameters[0].Name != "limit" ||
+				got.QueryParameters[0].Type != "integer" ||
+				got.QueryParameters[0].Optional {
+				t.Fatalf("QueryParameters = %#v", got.QueryParameters)
 			}
 			if got.Endpoint != "https://example.test/api/customers/%7BcustomerId%7D/orders?token=a;b" {
 				t.Fatalf("Endpoint = %q", got.Endpoint)
@@ -116,11 +116,11 @@ paths:
 		got.PathParameter.Type != "string" {
 		t.Fatalf("PathParameter = %#v", got.PathParameter)
 	}
-	if got.QueryParameter == nil ||
-		got.QueryParameter.Name != "limit" ||
-		got.QueryParameter.Type != "integer" ||
-		!got.QueryParameter.Optional {
-		t.Fatalf("QueryParameter = %#v", got.QueryParameter)
+	if len(got.QueryParameters) != 1 ||
+		got.QueryParameters[0].Name != "limit" ||
+		got.QueryParameters[0].Type != "integer" ||
+		!got.QueryParameters[0].Optional {
+		t.Fatalf("QueryParameters = %#v", got.QueryParameters)
 	}
 }
 
@@ -131,21 +131,6 @@ func TestSelectGETRejectsUnsupportedCombinedParameterShapes(t *testing.T) {
 		parameters string
 		message    string
 	}{
-		{
-			name:  "two query parameters",
-			route: "/customers",
-			parameters: `        - name: limit
-          in: query
-          required: true
-          schema:
-            type: integer
-        - name: cursor
-          in: query
-          required: true
-          schema:
-            type: string`,
-			message: "at most one query parameter",
-		},
 		{
 			name:  "two path parameters",
 			route: "/customers/{customerId}/orders/{orderId}",

@@ -6,7 +6,7 @@ The current scope is intentionally narrow:
 
 - inspect one local OpenAPI 3.x YAML or JSON document;
 - select one `GET` operation by its exact `operationId`;
-- support no parameters, one primitive operation-level query parameter (required or optional), one required primitive operation-level path parameter, or exactly one path plus one query parameter;
+- support no parameters, one or two primitive operation-level query parameters (each required or optional), one required primitive operation-level path parameter, or exactly one path plus one query parameter, with at most two parameters total;
 - expose that operation as exactly one MCP tool over stdio;
 - execute one bounded upstream HTTP request when the tool is called;
 - optionally attach one Bearer token from process environment to upstream requests;
@@ -90,7 +90,7 @@ The selected OpenAPI operation must:
 - have the exact requested `operationId`;
 - use `GET`;
 - have no path-item-level parameters;
-- have no operation-level parameters, one supported query parameter, one supported path parameter, or exactly one supported path plus one supported query parameter;
+- have no operation-level parameters, one or two supported query parameters, one supported path parameter, or exactly one supported path plus one supported query parameter, with at most two parameters total;
 - have no request body;
 - resolve to a static, absolute `http` or `https` server URL;
 - use an MCP-compatible `operationId` containing 1–128 characters from `A-Z`, `a-z`, `0-9`, `_`, `-`, and `.`.
@@ -188,6 +188,41 @@ Omission is not the same as `null`: `{"limit": null}` remains invalid because nu
 
 If the selected server URL already contains a raw query string, OASRelay preserves that existing query byte-for-byte. When the optional query argument is omitted, the existing query is left unchanged; when supplied, only the encoded operation parameter is appended. This avoids silently dropping RFC-valid query pairs that Go's form-style query parser does not accept.
 
+### Two primitive query parameters
+
+An operation without a path parameter may declare exactly two primitive operation-level query parameters. Each may independently be required or optional; the same plain primitive schemas and default query serialization rules apply to both.
+
+For example:
+
+```yaml
+paths:
+  /customers:
+    get:
+      operationId: listCustomers
+      parameters:
+        - name: limit
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Customer collection
+```
+
+Calling with `{"limit": 25}` sends `GET /customers?limit=25`. Calling with `{"limit": 25, "cursor": "next page"}` sends `GET /customers?limit=25&cursor=next+page`.
+
+Query pairs follow OpenAPI declaration order, regardless of the order of fields in the MCP input. Existing raw server query text is preserved, and supplied operation query pairs are appended.
+
+If both query parameters are optional, `{}` is valid and adds no operation query pairs. Omission remains distinct from an explicit empty string, which is sent as an empty query value. Explicit `null`, missing required values, wrong primitive types, and unknown fields fail before any upstream request. Schema defaults remain unsupported and are never injected.
+
+The total operation-level parameter cap remains two. One path plus two query parameters, three query parameters, and two path parameters remain unsupported.
+
 ### One required primitive path parameter
 
 A supported path parameter must be declared directly on the operation, use `in: path`, be `required: true`, and use the default simple path serialization. Its name must match exactly one `{name}` placeholder in the operation path, and its schema must be a plain primitive `string`, `integer`, `number`, or `boolean` without additional constraints.
@@ -270,7 +305,7 @@ If the query parameter is optional, `customerId` remains required while the quer
 
 OpenAPI declaration order does not matter. Binding is always path first and query second when the query value is supplied. Existing path escaping, raw-query preservation, primitive type validation, canonical integer serialization, and Bearer security rules remain unchanged.
 
-This does not enable arbitrary multiple parameters: two query parameters, two path parameters, more than two operation-level parameters, optional path parameters, headers, cookies, path-item-level inheritance, and custom serialization remain unsupported.
+The total operation-level parameter cap remains two. One path plus two query parameters, two path parameters, more than two operation-level parameters, optional path parameters, headers, cookies, path-item-level inheritance, and custom serialization remain unsupported.
 
 For both query and path parameters, missing required input, explicit `null`, a wrong primitive type, or an unknown input field is returned as an MCP tool error before any upstream request is sent. A parameterless operation continues to expose an empty object input schema.
 
@@ -384,9 +419,10 @@ Implemented:
 - internal reference resolution with external references blocked;
 - deterministic `GET` operation discovery;
 - exact selection of one supported `operationId`;
-- zero parameters, one required or optional operation-level primitive query parameter, one required operation-level primitive path parameter, or exactly one path plus one query parameter;
+- zero parameters, one or two operation-level primitive query parameters (each required or optional), one required operation-level primitive path parameter, or exactly one path plus one query parameter, with at most two parameters total;
 - dynamic closed MCP input schema that preserves required versus optional query semantics;
 - query argument validation and URL binding;
+- two-query schema and binding with independent requiredness, declaration-order serialization, and optional omission;
 - safe single-segment path argument validation and binding;
 - combined path-then-query validation and binding for exactly one parameter in each location, with the query required or optional;
 - canonical integer serialization;
@@ -396,11 +432,11 @@ Implemented:
 - one bounded upstream HTTP `GET` request;
 - structured success and non-2xx output;
 - minimal non-root Docker packaging;
-- container-level MCP stdio acceptance for required-path plus optional-query omission/presence, with Bearer forwarding.
+- container-level MCP stdio acceptance for required-path plus optional-query and required-query plus optional-query omission/presence, with Bearer forwarding.
 
 Not implemented:
 
-- arbitrary multiple operation parameters, including two query parameters or two path parameters;
+- arbitrary multiple operation parameters, including three query parameters, one path plus two query parameters, or two path parameters;
 - optional path parameters;
 - header or cookie parameters;
 - path-item-level parameter inheritance;

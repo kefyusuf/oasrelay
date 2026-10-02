@@ -27,14 +27,14 @@ type PathParameter struct {
 // SelectedOperation is the validated project-owned operation required by the
 // one-tool MCP runtime.
 type SelectedOperation struct {
-	OperationID    string
-	Method         string
-	Path           string
-	Summary        string
-	Description    string
-	Endpoint       string
-	QueryParameter *QueryParameter
-	PathParameter  *PathParameter
+	OperationID     string
+	Method          string
+	Path            string
+	Summary         string
+	Description     string
+	Endpoint        string
+	QueryParameters []QueryParameter
+	PathParameter   *PathParameter
 }
 
 // SelectParameterlessGET loads one local document and selects the exact
@@ -64,8 +64,8 @@ func SelectParameterlessGET(path, operationID string) (SelectedOperation, error)
 }
 
 // SelectGET loads one local document and selects the exact operationId when it
-// represents a parameterless GET, a GET with exactly one supported required
-// operation-level query or path parameter, or exactly one of each.
+// represents a parameterless GET, a GET with up to two supported operation-level
+// query parameters, one required path parameter, or exactly one path plus one query.
 func SelectGET(path, operationID string) (SelectedOperation, error) {
 	document, err := loadDocument(path)
 	if err != nil {
@@ -155,18 +155,18 @@ func selectGETOperation(
 		)
 	}
 
-	queryParameter, pathParameter, err := supportedOperationParameters(operationID, route, operation.Parameters)
+	queryParameters, pathParameter, err := supportedOperationParameters(operationID, route, operation.Parameters)
 	if err != nil {
 		return SelectedOperation{}, err
 	}
-	return buildSelectedOperation(document, route, method, item, operation, queryParameter, pathParameter)
+	return buildSelectedOperation(document, route, method, item, operation, queryParameters, pathParameter)
 }
 
 func supportedOperationParameters(
 	operationID, route string,
 	parameters openapi3.Parameters,
-) (*QueryParameter, *PathParameter, error) {
-	var queryRaw *openapi3.Parameter
+) ([]QueryParameter, *PathParameter, error) {
+	queryRaw := make([]*openapi3.Parameter, 0, 2)
 	var pathRaw *openapi3.Parameter
 
 	for _, parameterRef := range parameters {
@@ -180,13 +180,22 @@ func supportedOperationParameters(
 		parameter := parameterRef.Value
 		switch parameter.In {
 		case openapi3.ParameterInQuery:
-			if queryRaw != nil {
+			if len(queryRaw) == 2 {
 				return nil, nil, fmt.Errorf(
-					"operationId %q supports at most one query parameter",
+					"operationId %q supports at most two query parameters",
 					operationID,
 				)
 			}
-			queryRaw = parameter
+			for _, existing := range queryRaw {
+				if existing.Name == parameter.Name {
+					return nil, nil, fmt.Errorf(
+						"operationId %q has duplicate query parameter name %q",
+						operationID,
+						parameter.Name,
+					)
+				}
+			}
+			queryRaw = append(queryRaw, parameter)
 
 		case openapi3.ParameterInPath:
 			if pathRaw != nil {
@@ -207,21 +216,25 @@ func supportedOperationParameters(
 		}
 	}
 
-	if queryRaw != nil && pathRaw != nil && queryRaw.Name == pathRaw.Name {
-		return nil, nil, fmt.Errorf(
-			"operationId %q path and query parameters share parameter name %q; MCP input names must be unique",
-			operationID,
-			queryRaw.Name,
-		)
+	if pathRaw != nil {
+		for _, query := range queryRaw {
+			if query.Name == pathRaw.Name {
+				return nil, nil, fmt.Errorf(
+					"operationId %q path and query parameters share parameter name %q; MCP input names must be unique",
+					operationID,
+					query.Name,
+				)
+			}
+		}
 	}
 
-	var queryParameter *QueryParameter
-	if queryRaw != nil {
-		parameter, err := supportedQueryParameter(operationID, queryRaw)
+	queryParameters := make([]QueryParameter, 0, len(queryRaw))
+	for _, raw := range queryRaw {
+		parameter, err := supportedQueryParameter(operationID, raw)
 		if err != nil {
 			return nil, nil, err
 		}
-		queryParameter = parameter
+		queryParameters = append(queryParameters, *parameter)
 	}
 
 	var pathParameter *PathParameter
@@ -233,7 +246,7 @@ func supportedOperationParameters(
 		pathParameter = parameter
 	}
 
-	return queryParameter, pathParameter, nil
+	return queryParameters, pathParameter, nil
 }
 
 func supportedQueryParameter(
@@ -381,7 +394,7 @@ func buildSelectedOperation(
 	route, method string,
 	item *openapi3.PathItem,
 	operation *openapi3.Operation,
-	queryParameter *QueryParameter,
+	queryParameters []QueryParameter,
 	pathParameter *PathParameter,
 ) (SelectedOperation, error) {
 	operationID := operation.OperationID
@@ -399,14 +412,14 @@ func buildSelectedOperation(
 	}
 
 	return SelectedOperation{
-		OperationID:    operationID,
-		Method:         http.MethodGet,
-		Path:           route,
-		Summary:        operation.Summary,
-		Description:    operation.Description,
-		Endpoint:       endpoint,
-		QueryParameter: queryParameter,
-		PathParameter:  pathParameter,
+		OperationID:     operationID,
+		Method:          http.MethodGet,
+		Path:            route,
+		Summary:         operation.Summary,
+		Description:     operation.Description,
+		Endpoint:        endpoint,
+		QueryParameters: queryParameters,
+		PathParameter:   pathParameter,
 	}, nil
 }
 
