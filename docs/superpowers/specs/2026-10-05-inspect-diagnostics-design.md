@@ -24,4 +24,8 @@ Implementation and publication evidence will be recorded in the PR. This increme
 
 ## Local evidence
 
-Observed RED for the missing diagnostics API/model and for CLI opt-in usage. Fresh `go test -count=1 ./...`, `go vet ./...`, module tidy consistency, and diff checks passed after implementation. The customer fixture produced per-operation `Selectable: yes` lines and the static-selection disclaimer. Independent source review found no actionable correctness or regression issue. Default report tests remain unchanged; documentation explains the flag syntax. Real Docker CI remains pending publication.
+Observed RED for the missing diagnostics API/model and for CLI opt-in usage. Fresh `go test -count=1 ./...`, `go vet ./...`, module tidy consistency, and diff checks passed after implementation. The customer fixture produced per-operation `Selectable: yes` lines and the static-selection disclaimer. Independent source review found no actionable correctness or regression issue. Default report tests remain unchanged; documentation explains the flag syntax. Actual Docker execution is unavailable on this host; final-head Linux/Docker CI evidence is maintained in the PR checks and validation section.
+
+## Publication checkpoint
+
+[PR #23](https://github.com/kefyusuf/oasrelay/pull/23) on `feat/inspect-diagnostics` contains test-contract commit `5c0f669` and implementation commit `f5ef676`, based on main `3a0eb87`. Verify final-head CI before treating the PR as ready. Keep continuation limited to this diagnostics increment until review/merge; further runtime capabilities require a separate scope decision.
