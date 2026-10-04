@@ -62,10 +62,10 @@ paths:
 			if err != nil {
 				t.Fatalf("SelectGET() error = %v", err)
 			}
-			if got.PathParameter == nil ||
-				got.PathParameter.Name != "customerId" ||
-				got.PathParameter.Type != "string" {
-				t.Fatalf("PathParameter = %#v", got.PathParameter)
+			if len(got.PathParameters) != 1 ||
+				got.PathParameters[0].Name != "customerId" ||
+				got.PathParameters[0].Type != "string" {
+				t.Fatalf("PathParameters = %#v", got.PathParameters)
 			}
 			if len(got.QueryParameters) != 1 ||
 				got.QueryParameters[0].Name != "limit" ||
@@ -111,10 +111,10 @@ paths:
 	if err != nil {
 		t.Fatalf("SelectGET() error = %v", err)
 	}
-	if got.PathParameter == nil ||
-		got.PathParameter.Name != "customerId" ||
-		got.PathParameter.Type != "string" {
-		t.Fatalf("PathParameter = %#v", got.PathParameter)
+	if len(got.PathParameters) != 1 ||
+		got.PathParameters[0].Name != "customerId" ||
+		got.PathParameters[0].Type != "string" {
+		t.Fatalf("PathParameters = %#v", got.PathParameters)
 	}
 	if len(got.QueryParameters) != 1 ||
 		got.QueryParameters[0].Name != "limit" ||

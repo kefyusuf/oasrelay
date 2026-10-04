@@ -41,7 +41,10 @@ func New(operation oasopenapi.SelectedOperation, client *http.Client) (*mcp.Serv
 			len(operation.QueryParameters),
 		)
 	}
-	if operation.PathParameter != nil && len(operation.QueryParameters) > 1 {
+	if len(operation.PathParameters) > 1 {
+		return nil, fmt.Errorf("this runtime supports at most one path parameter")
+	}
+	if len(operation.PathParameters) != 0 && len(operation.QueryParameters) > 1 {
 		return nil, fmt.Errorf("operation may expose a path with at most one query parameter")
 	}
 	queryNames := make(map[string]struct{}, len(operation.QueryParameters))
@@ -50,7 +53,7 @@ func New(operation oasopenapi.SelectedOperation, client *http.Client) (*mcp.Serv
 			return nil, fmt.Errorf("duplicate query parameter name %q", parameter.Name)
 		}
 		queryNames[parameter.Name] = struct{}{}
-		if operation.PathParameter != nil && parameter.Name == operation.PathParameter.Name {
+		if len(operation.PathParameters) != 0 && parameter.Name == operation.PathParameters[0].Name {
 			return nil, fmt.Errorf(
 				"path and query parameters share MCP input name %q",
 				parameter.Name,
@@ -137,7 +140,7 @@ func toolInputSchema(operation oasopenapi.SelectedOperation) map[string]any {
 	properties := map[string]any{}
 	required := []string{}
 
-	if parameter := operation.PathParameter; parameter != nil {
+	for _, parameter := range operation.PathParameters {
 		properties[parameter.Name] = map[string]any{
 			"type": parameter.Type,
 		}
@@ -169,12 +172,12 @@ func bindOperationArguments(
 	input map[string]json.RawMessage,
 ) (string, error) {
 	switch {
-	case operation.PathParameter != nil && len(operation.QueryParameters) != 0:
+	case len(operation.PathParameters) != 0 && len(operation.QueryParameters) != 0:
 		return bindPathAndQueryParameters(operation, input)
-	case operation.PathParameter != nil:
+	case len(operation.PathParameters) != 0:
 		return bindPathParameter(
 			operation.Endpoint,
-			operation.PathParameter,
+			&operation.PathParameters[0],
 			input,
 		)
 	default:
@@ -190,10 +193,10 @@ func bindPathAndQueryParameters(
 	operation oasopenapi.SelectedOperation,
 	input map[string]json.RawMessage,
 ) (string, error) {
-	pathParameter := operation.PathParameter
-	if pathParameter == nil || len(operation.QueryParameters) != 1 {
+	if len(operation.PathParameters) != 1 || len(operation.QueryParameters) != 1 {
 		return "", fmt.Errorf("combined binding requires one path and one query parameter")
 	}
+	pathParameter := &operation.PathParameters[0]
 
 	pathRaw, ok := input[pathParameter.Name]
 	if !ok {

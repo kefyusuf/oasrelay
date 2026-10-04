@@ -19,10 +19,10 @@ func combinedOperation(endpoint string) oasopenapi.SelectedOperation {
 		Method:      http.MethodGet,
 		Path:        "/customers/{customerId}/orders",
 		Endpoint:    endpoint,
-		PathParameter: &oasopenapi.PathParameter{
+		PathParameters: []oasopenapi.PathParameter{{
 			Name: "customerId",
 			Type: "string",
-		},
+		}},
 		QueryParameters: []oasopenapi.QueryParameter{{
 			Name: "limit",
 			Type: "integer",
@@ -140,7 +140,7 @@ func TestServerRejectsCombinedParametersWithSameInputName(t *testing.T) {
 	operation := combinedOperation(
 		"http://example.test/customers/%7Bid%7D/orders",
 	)
-	operation.PathParameter.Name = "id"
+	operation.PathParameters[0].Name = "id"
 	operation.QueryParameters[0].Name = "id"
 
 	_, err := New(operation, http.DefaultClient)

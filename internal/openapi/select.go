@@ -34,7 +34,7 @@ type SelectedOperation struct {
 	Description     string
 	Endpoint        string
 	QueryParameters []QueryParameter
-	PathParameter   *PathParameter
+	PathParameters  []PathParameter
 }
 
 // SelectParameterlessGET loads one local document and selects the exact
@@ -165,7 +165,7 @@ func selectGETOperation(
 func supportedOperationParameters(
 	operationID, route string,
 	parameters openapi3.Parameters,
-) ([]QueryParameter, *PathParameter, error) {
+) ([]QueryParameter, []PathParameter, error) {
 	queryRaw := make([]*openapi3.Parameter, 0, 2)
 	var pathRaw *openapi3.Parameter
 
@@ -237,16 +237,16 @@ func supportedOperationParameters(
 		queryParameters = append(queryParameters, *parameter)
 	}
 
-	var pathParameter *PathParameter
+	var pathParameters []PathParameter
 	if pathRaw != nil {
 		parameter, err := supportedPathParameter(operationID, route, pathRaw)
 		if err != nil {
 			return nil, nil, err
 		}
-		pathParameter = parameter
+		pathParameters = append(pathParameters, *parameter)
 	}
 
-	return queryParameters, pathParameter, nil
+	return queryParameters, pathParameters, nil
 }
 
 func supportedQueryParameter(
@@ -395,7 +395,7 @@ func buildSelectedOperation(
 	item *openapi3.PathItem,
 	operation *openapi3.Operation,
 	queryParameters []QueryParameter,
-	pathParameter *PathParameter,
+	pathParameters []PathParameter,
 ) (SelectedOperation, error) {
 	operationID := operation.OperationID
 	if err := validateMCPToolName(operationID); err != nil {
@@ -419,7 +419,7 @@ func buildSelectedOperation(
 		Description:     operation.Description,
 		Endpoint:        endpoint,
 		QueryParameters: queryParameters,
-		PathParameter:   pathParameter,
+		PathParameters:  pathParameters,
 	}, nil
 }
 

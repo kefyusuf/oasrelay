@@ -47,11 +47,11 @@ paths:
 			if len(got.QueryParameters) != 0 {
 				t.Fatalf("QueryParameters = %#v, want none", got.QueryParameters)
 			}
-			if got.PathParameter == nil {
-				t.Fatal("PathParameter = nil")
+			if len(got.PathParameters) != 1 {
+				t.Fatalf("PathParameters = %#v, want exactly one", got.PathParameters)
 			}
-			if got.PathParameter.Name != "customerId" || got.PathParameter.Type != test.schemaType {
-				t.Fatalf("PathParameter = %#v", got.PathParameter)
+			if got.PathParameters[0].Name != "customerId" || got.PathParameters[0].Type != test.schemaType {
+				t.Fatalf("PathParameters = %#v", got.PathParameters)
 			}
 			if got.Path != "/customers/{customerId}" {
 				t.Fatalf("Path = %q", got.Path)
@@ -90,8 +90,8 @@ paths:
 	if err != nil {
 		t.Fatalf("SelectGET() error = %v", err)
 	}
-	if got.PathParameter == nil || got.PathParameter.Name != "customerId" || got.PathParameter.Type != "string" {
-		t.Fatalf("PathParameter = %#v", got.PathParameter)
+	if len(got.PathParameters) != 1 || got.PathParameters[0].Name != "customerId" || got.PathParameters[0].Type != "string" {
+		t.Fatalf("PathParameters = %#v", got.PathParameters)
 	}
 }
 

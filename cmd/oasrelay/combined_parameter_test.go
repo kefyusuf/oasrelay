@@ -66,8 +66,8 @@ paths:
 			calls,
 		)
 	}
-	if selected.PathParameter == nil || selected.PathParameter.Name != "customerId" {
-		t.Fatalf("selected PathParameter = %#v", selected.PathParameter)
+	if len(selected.PathParameters) != 1 || selected.PathParameters[0].Name != "customerId" {
+		t.Fatalf("selected PathParameters = %#v", selected.PathParameters)
 	}
 	if len(selected.QueryParameters) != 1 || selected.QueryParameters[0].Name != "limit" {
 		t.Fatalf("selected QueryParameters = %#v", selected.QueryParameters)

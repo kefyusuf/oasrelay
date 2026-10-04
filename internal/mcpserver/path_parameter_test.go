@@ -18,10 +18,10 @@ func TestServerExposesRequiredPrimitivePathParameterSchema(t *testing.T) {
 		Method:      http.MethodGet,
 		Path:        "/customers/{customerId}",
 		Endpoint:    "http://example.test/customers/%7BcustomerId%7D",
-		PathParameter: &oasopenapi.PathParameter{
+		PathParameters: []oasopenapi.PathParameter{{
 			Name: "customerId",
 			Type: "string",
-		},
+		}},
 	}, http.DefaultClient)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -91,10 +91,10 @@ func TestServerBindsPrimitivePathParameter(t *testing.T) {
 				Method:      http.MethodGet,
 				Path:        "/customers/{customerId}",
 				Endpoint:    upstream.URL + "/api/customers/%7BcustomerId%7D?token=a;b",
-				PathParameter: &oasopenapi.PathParameter{
+				PathParameters: []oasopenapi.PathParameter{{
 					Name: "customerId",
 					Type: test.parameterType,
-				},
+				}},
 			}, upstream.Client())
 			if err != nil {
 				t.Fatalf("New() error = %v", err)
@@ -147,10 +147,10 @@ func TestServerRejectsInvalidPathArgumentsBeforeUpstream(t *testing.T) {
 				Method:      http.MethodGet,
 				Path:        "/customers/{customerId}",
 				Endpoint:    upstream.URL + "/customers/%7BcustomerId%7D",
-				PathParameter: &oasopenapi.PathParameter{
+				PathParameters: []oasopenapi.PathParameter{{
 					Name: "customerId",
 					Type: "string",
-				},
+				}},
 			}, upstream.Client())
 			if err != nil {
 				t.Fatalf("New() error = %v", err)
