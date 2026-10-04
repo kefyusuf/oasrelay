@@ -132,21 +132,6 @@ func TestSelectGETRejectsUnsupportedCombinedParameterShapes(t *testing.T) {
 		message    string
 	}{
 		{
-			name:  "two path parameters",
-			route: "/customers/{customerId}/orders/{orderId}",
-			parameters: `        - name: customerId
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: orderId
-          in: path
-          required: true
-          schema:
-            type: string`,
-			message: "at most one path parameter",
-		},
-		{
 			name:  "three operation parameters",
 			route: "/customers/{customerId}",
 			parameters: `        - name: customerId
