@@ -45,15 +45,27 @@ func runWithServe(args []string, stdout, stderr io.Writer, serve serveFunc) int 
 }
 
 func runInspect(args []string, stdout, stderr io.Writer) int {
-	if len(args) != 1 {
+	flags := flag.NewFlagSet("inspect", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	diagnostics := flags.Bool("diagnostics", false, "explain static GET selection")
+	if err := flags.Parse(args); err != nil {
+		fmt.Fprintf(stderr, "error: invalid inspect arguments: %v\n", err)
+		fmt.Fprintln(stderr, inspectUsage)
+		return 2
+	}
+	if flags.NArg() != 1 {
 		fmt.Fprintln(stderr, "error: inspect requires exactly one local spec path")
 		fmt.Fprintln(stderr, inspectUsage)
 		return 2
 	}
 
-	inspection, err := oasopenapi.InspectFile(args[0])
+	inspect := oasopenapi.InspectFile
+	if *diagnostics {
+		inspect = oasopenapi.InspectFileWithDiagnostics
+	}
+	inspection, err := inspect(flags.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "error: inspect %s: %v\n", args[0], err)
+		fmt.Fprintf(stderr, "error: inspect %s: %v\n", flags.Arg(0), err)
 		return 1
 	}
 
@@ -129,7 +141,18 @@ func writeInspection(w io.Writer, inspection oasopenapi.Inspection) {
 		if operation.OperationID == "" {
 			fmt.Fprintln(w, "    Warning: operationId is required for future MCP exposure")
 		}
+		if diagnostic, exists := inspection.Diagnostics[operation.Path]; exists {
+			if diagnostic.Selectable {
+				fmt.Fprintln(w, "    Selectable: yes")
+			} else {
+				fmt.Fprintln(w, "    Selectable: no")
+				fmt.Fprintf(w, "    Reason: %s\n", diagnostic.Reason)
+			}
+		}
 	}
 
 	fmt.Fprintf(w, "\nTotal GET operations: %d\n", len(inspection.Operations))
+	if inspection.Diagnostics != nil {
+		fmt.Fprintln(w, "\nDiagnostics cover static selection only; upstream availability and authentication are not checked.")
+	}
 }

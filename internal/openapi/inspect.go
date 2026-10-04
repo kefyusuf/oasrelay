@@ -10,6 +10,13 @@ type Inspection struct {
 	APIVersion     string
 	ServerURL      string
 	Operations     []Operation
+	Diagnostics    map[string]SelectionDiagnostic
+}
+
+// SelectionDiagnostic describes static selector acceptance, not runtime readiness.
+type SelectionDiagnostic struct {
+	Selectable bool
+	Reason     string
 }
 
 // Operation describes one discovered GET operation.
@@ -22,6 +29,16 @@ type Operation struct {
 // InspectFile loads and validates one local OpenAPI document, then returns its
 // metadata and GET operations. External references remain disabled.
 func InspectFile(path string) (Inspection, error) {
+	return inspectFile(path, false)
+}
+
+// InspectFileWithDiagnostics adds static GET selection diagnostics keyed by path.
+// It loads the document once and never starts MCP or contacts an upstream.
+func InspectFileWithDiagnostics(path string) (Inspection, error) {
+	return inspectFile(path, true)
+}
+
+func inspectFile(path string, diagnostics bool) (Inspection, error) {
 	document, err := loadDocument(path)
 	if err != nil {
 		return Inspection{}, err
@@ -35,6 +52,9 @@ func InspectFile(path string) (Inspection, error) {
 	if len(document.Servers) > 0 && document.Servers[0] != nil {
 		result.ServerURL = document.Servers[0].URL
 	}
+	if diagnostics {
+		result.Diagnostics = make(map[string]SelectionDiagnostic)
+	}
 
 	if document.Paths != nil {
 		for path, item := range document.Paths.Map() {
@@ -46,6 +66,14 @@ func InspectFile(path string) (Inspection, error) {
 				Method:      "GET",
 				Path:        path,
 			})
+			if diagnostics {
+				_, err := selectGETOperation(document, path, "GET", item, item.Get)
+				diagnostic := SelectionDiagnostic{Selectable: err == nil}
+				if err != nil {
+					diagnostic.Reason = err.Error()
+				}
+				result.Diagnostics[path] = diagnostic
+			}
 		}
 	}
 

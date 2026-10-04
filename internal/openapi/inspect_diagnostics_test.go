@@ -80,8 +80,7 @@ paths:
 		if operation.Path != wantPaths[index] {
 			t.Fatalf("order = %#v", got.Operations)
 		}
-		selected, err := SelectGET(path, operation.OperationID)
-		_ = selected
+		_, err := SelectGET(path, operation.OperationID)
 		diagnostic, exists := got.Diagnostics[operation.Path]
 		if !exists || diagnostic.Selectable != (err == nil) {
 			t.Fatalf("%s diagnostic = %#v; selection error = %v", operation.Path, diagnostic, err)
@@ -95,6 +94,20 @@ paths:
 	}
 	if !got.Diagnostics["/a-supported/{id}"].Selectable || !strings.Contains(got.Diagnostics["/z-blocked"].Reason, "at most two effective parameters") {
 		t.Fatalf("diagnostics = %#v", got.Diagnostics)
+	}
+}
+
+func TestInspectDiagnosticsHandlesNoGETOperations(t *testing.T) {
+	path := writeSelectionSpec(t, `openapi: 3.0.3
+info: {title: Empty, version: 1.0.0}
+paths: {}
+`)
+	got, err := InspectFileWithDiagnostics(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Operations) != 0 || got.Diagnostics == nil || len(got.Diagnostics) != 0 {
+		t.Fatalf("inspection = %#v", got)
 	}
 }
 
