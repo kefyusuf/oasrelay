@@ -49,6 +49,9 @@ func New(operation oasopenapi.SelectedOperation, client *http.Client) (*mcp.Serv
 	}
 	pathNames := make(map[string]struct{}, len(operation.PathParameters))
 	for _, parameter := range operation.PathParameters {
+		if err := validateStringEnum(parameter.Type, parameter.Enum); err != nil {
+			return nil, fmt.Errorf("path parameter %q: %w", parameter.Name, err)
+		}
 		if _, exists := pathNames[parameter.Name]; exists {
 			return nil, fmt.Errorf("duplicate path parameter name %q", parameter.Name)
 		}
@@ -56,6 +59,9 @@ func New(operation oasopenapi.SelectedOperation, client *http.Client) (*mcp.Serv
 	}
 	queryNames := make(map[string]struct{}, len(operation.QueryParameters))
 	for _, parameter := range operation.QueryParameters {
+		if err := validateStringEnum(parameter.Type, parameter.Enum); err != nil {
+			return nil, fmt.Errorf("query parameter %q: %w", parameter.Name, err)
+		}
 		if _, exists := queryNames[parameter.Name]; exists {
 			return nil, fmt.Errorf("duplicate query parameter name %q", parameter.Name)
 		}
@@ -151,12 +157,18 @@ func toolInputSchema(operation oasopenapi.SelectedOperation) map[string]any {
 		properties[parameter.Name] = map[string]any{
 			"type": parameter.Type,
 		}
+		if parameter.Enum != nil {
+			properties[parameter.Name].(map[string]any)["enum"] = parameter.Enum
+		}
 		required = append(required, parameter.Name)
 	}
 
 	for _, parameter := range operation.QueryParameters {
 		properties[parameter.Name] = map[string]any{
 			"type": parameter.Type,
+		}
+		if parameter.Enum != nil {
+			properties[parameter.Name].(map[string]any)["enum"] = parameter.Enum
 		}
 		if !parameter.Optional {
 			required = append(required, parameter.Name)
@@ -279,7 +291,7 @@ func bindQueryParameters(
 			return "", fmt.Errorf("required query parameter %q is missing", parameter.Name)
 		}
 
-		value, err := primitiveQueryValue(parameter.Type, raw)
+		value, err := parameterValue(parameter.Type, parameter.Enum, raw)
 		if err != nil {
 			return "", fmt.Errorf("query parameter %q: %w", parameter.Name, err)
 		}
@@ -358,7 +370,7 @@ func bindPathParameters(
 		if !ok {
 			return "", fmt.Errorf("required path parameter %q is missing", parameter.Name)
 		}
-		value, err := primitiveQueryValue(parameter.Type, raw)
+		value, err := parameterValue(parameter.Type, parameter.Enum, raw)
 		if err != nil {
 			return "", fmt.Errorf("path parameter %q: %w", parameter.Name, err)
 		}
@@ -427,6 +439,39 @@ func primitiveQueryValue(parameterType string, raw json.RawMessage) (string, err
 	default:
 		return "", fmt.Errorf("unsupported primitive type %q", parameterType)
 	}
+}
+
+func validateStringEnum(parameterType string, values []string) error {
+	if values == nil {
+		return nil
+	}
+	if parameterType != "string" || len(values) == 0 {
+		return fmt.Errorf("enum requires a string type and at least one member")
+	}
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if _, exists := seen[value]; exists {
+			return fmt.Errorf("enum members must be unique")
+		}
+		seen[value] = struct{}{}
+	}
+	return nil
+}
+
+func parameterValue(parameterType string, values []string, raw json.RawMessage) (string, error) {
+	if err := validateStringEnum(parameterType, values); err != nil {
+		return "", err
+	}
+	value, err := primitiveQueryValue(parameterType, raw)
+	if err != nil || values == nil {
+		return value, err
+	}
+	for _, allowed := range values {
+		if value == allowed {
+			return value, nil
+		}
+	}
+	return "", fmt.Errorf("value must match a declared string enum member")
 }
 
 func toolDescription(operation oasopenapi.SelectedOperation) string {

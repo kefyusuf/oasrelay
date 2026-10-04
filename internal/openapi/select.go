@@ -15,6 +15,7 @@ type QueryParameter struct {
 	Name     string
 	Type     string
 	Optional bool
+	Enum     []string
 }
 
 // PathParameter is the deliberately small path-parameter contract supported
@@ -22,6 +23,7 @@ type QueryParameter struct {
 type PathParameter struct {
 	Name string
 	Type string
+	Enum []string
 }
 
 // SelectedOperation is the validated project-owned operation required by the
@@ -333,6 +335,7 @@ func supportedQueryParameter(
 		Name:     parameter.Name,
 		Type:     (*parameter.Schema.Value.Type)[0],
 		Optional: !parameter.Required,
+		Enum:     stringEnumValues(parameter.Schema.Value),
 	}, nil
 }
 
@@ -380,6 +383,7 @@ func supportedPathParameter(
 	return &PathParameter{
 		Name: parameter.Name,
 		Type: (*parameter.Schema.Value.Type)[0],
+		Enum: stringEnumValues(parameter.Schema.Value),
 	}, nil
 }
 
@@ -400,7 +404,7 @@ func isPlainPrimitiveSchema(schema *openapi3.Schema) bool {
 		len(schema.AllOf) == 0 &&
 		schema.Not == nil &&
 		!schema.Nullable &&
-		len(schema.Enum) == 0 &&
+		isSupportedEnum(schema) &&
 		schema.Default == nil &&
 		schema.Format == "" &&
 		schema.Min == nil &&
@@ -421,6 +425,39 @@ func isPlainPrimitiveSchema(schema *openapi3.Schema) bool {
 
 func hasExclusiveBound(bound openapi3.ExclusiveBound) bool {
 	return bound.Value != nil || bound.Bool != nil && *bound.Bool
+}
+
+func isSupportedEnum(schema *openapi3.Schema) bool {
+	if schema.Enum == nil {
+		return true
+	}
+	if !schema.Type.Is(openapi3.TypeString) || len(schema.Enum) == 0 {
+		return false
+	}
+	seen := make(map[string]struct{}, len(schema.Enum))
+	for _, member := range schema.Enum {
+		value, ok := member.(string)
+		if !ok {
+			return false
+		}
+		if _, exists := seen[value]; exists {
+			return false
+		}
+		seen[value] = struct{}{}
+	}
+	return true
+}
+
+// Called only after the supported-schema check has validated enum members.
+func stringEnumValues(schema *openapi3.Schema) []string {
+	if schema.Enum == nil {
+		return nil
+	}
+	values := make([]string, len(schema.Enum))
+	for index, member := range schema.Enum {
+		values[index] = member.(string)
+	}
+	return values
 }
 
 func buildSelectedOperation(
