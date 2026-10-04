@@ -1,0 +1,33 @@
+openapi: 3.0.3
+info:
+  title: String Enum Parameters API
+  version: 1.0.0
+servers:
+  - url: https://example.test/api?token=a;b&mode=raw%2Fvalue
+paths:
+  /customers/{customerId}/orders:
+    parameters:
+      - name: customerId
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [cus_123, "a/b"]
+      - name: filter
+        in: query
+        required: true
+        schema:
+          type: string
+          enum: [legacy]
+    get:
+      operationId: getEnumCustomerOrders
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["next page", ""]
+      responses:
+        "200":
+          description: Customer orders

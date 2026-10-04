@@ -34,15 +34,15 @@ func TestSelectGETMergesInheritedParameters(t *testing.T) {
 		query               []QueryParameter
 		path                []PathParameter
 	}{
-		{"two inherited paths", "/{first}/{second}", openapi3.Parameters{path("second", "integer"), path("first", "string")}, nil, nil, []PathParameter{{"second", "integer"}, {"first", "string"}}},
-		{"mixed sources", "/{id}", openapi3.Parameters{path("id", "string")}, openapi3.Parameters{query("limit", "integer", false)}, []QueryParameter{{"limit", "integer", true}}, []PathParameter{{"id", "string"}}},
-		{"inherited queries independent requiredness", "/items", openapi3.Parameters{query("first", "string", true), query("second", "boolean", false)}, nil, []QueryParameter{{"first", "string", false}, {"second", "boolean", true}}, nil},
-		{"query override type and requiredness", "/items", openapi3.Parameters{query("first", "string", true)}, openapi3.Parameters{query("first", "integer", false), query("second", "boolean", true)}, []QueryParameter{{"first", "integer", true}, {"second", "boolean", false}}, nil},
-		{"query override makes required", "/items", openapi3.Parameters{query("first", "string", false)}, openapi3.Parameters{query("first", "boolean", true)}, []QueryParameter{{"first", "boolean", false}}, nil},
-		{"operation-only queries retain order", "/items", nil, openapi3.Parameters{query("second", "boolean", false), query("first", "integer", true)}, []QueryParameter{{"second", "boolean", true}, {"first", "integer", false}}, nil},
-		{"reverse overrides retain slots", "/items", openapi3.Parameters{query("first", "string", false), query("second", "string", true)}, openapi3.Parameters{query("second", "boolean", false), query("first", "integer", true)}, []QueryParameter{{"first", "integer", false}, {"second", "boolean", true}}, nil},
-		{"path override type", "/{id}", openapi3.Parameters{path("id", "string")}, openapi3.Parameters{path("id", "integer")}, nil, []PathParameter{{"id", "integer"}}},
-		{"reverse path overrides retain slots", "/{first}/{second}", openapi3.Parameters{path("second", "string"), path("first", "string")}, openapi3.Parameters{path("first", "boolean"), path("second", "integer")}, nil, []PathParameter{{"second", "integer"}, {"first", "boolean"}}},
+		{"two inherited paths", "/{first}/{second}", openapi3.Parameters{path("second", "integer"), path("first", "string")}, nil, nil, []PathParameter{{Name: "second", Type: "integer"}, {Name: "first", Type: "string"}}},
+		{"mixed sources", "/{id}", openapi3.Parameters{path("id", "string")}, openapi3.Parameters{query("limit", "integer", false)}, []QueryParameter{{Name: "limit", Type: "integer", Optional: true}}, []PathParameter{{Name: "id", Type: "string"}}},
+		{"inherited queries independent requiredness", "/items", openapi3.Parameters{query("first", "string", true), query("second", "boolean", false)}, nil, []QueryParameter{{Name: "first", Type: "string"}, {Name: "second", Type: "boolean", Optional: true}}, nil},
+		{"query override type and requiredness", "/items", openapi3.Parameters{query("first", "string", true)}, openapi3.Parameters{query("first", "integer", false), query("second", "boolean", true)}, []QueryParameter{{Name: "first", Type: "integer", Optional: true}, {Name: "second", Type: "boolean"}}, nil},
+		{"query override makes required", "/items", openapi3.Parameters{query("first", "string", false)}, openapi3.Parameters{query("first", "boolean", true)}, []QueryParameter{{Name: "first", Type: "boolean"}}, nil},
+		{"operation-only queries retain order", "/items", nil, openapi3.Parameters{query("second", "boolean", false), query("first", "integer", true)}, []QueryParameter{{Name: "second", Type: "boolean", Optional: true}, {Name: "first", Type: "integer"}}, nil},
+		{"reverse overrides retain slots", "/items", openapi3.Parameters{query("first", "string", false), query("second", "string", true)}, openapi3.Parameters{query("second", "boolean", false), query("first", "integer", true)}, []QueryParameter{{Name: "first", Type: "integer"}, {Name: "second", Type: "boolean", Optional: true}}, nil},
+		{"path override type", "/{id}", openapi3.Parameters{path("id", "string")}, openapi3.Parameters{path("id", "integer")}, nil, []PathParameter{{Name: "id", Type: "integer"}}},
+		{"reverse path overrides retain slots", "/{first}/{second}", openapi3.Parameters{path("second", "string"), path("first", "string")}, openapi3.Parameters{path("first", "boolean"), path("second", "integer")}, nil, []PathParameter{{Name: "second", Type: "integer"}, {Name: "first", Type: "boolean"}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -71,7 +71,7 @@ func TestSelectGETRejectsInvalidInheritedParameters(t *testing.T) {
 	custom := inheritanceParameter("q", "query", "string", true)
 	custom.Value.Style = "spaceDelimited"
 	constrained := inheritanceParameter("q", "query", "string", true)
-	constrained.Value.Schema.Value.Enum = []any{"active"}
+	constrained.Value.Schema.Value.Pattern = "^active$"
 	optionalPath := inheritanceParameter("id", "path", "string", false)
 	customPath := inheritanceParameter("id", "path", "string", true)
 	customPath.Value.Style = "label"
@@ -134,7 +134,7 @@ paths:
           description: Items
 `)
 	got, err := SelectGET(path, "getItems")
-	if err != nil || !reflect.DeepEqual(got.PathParameters, []PathParameter{{"id", "integer"}}) {
+	if err != nil || !reflect.DeepEqual(got.PathParameters, []PathParameter{{Name: "id", Type: "integer"}}) {
 		t.Fatalf("selection = %#v, error = %v", got, err)
 	}
 	if _, err := SelectParameterlessGET(path, "getItems"); err == nil || !strings.Contains(err.Error(), "parameterless operations only") {

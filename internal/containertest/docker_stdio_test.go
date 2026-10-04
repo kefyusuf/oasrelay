@@ -265,6 +265,36 @@ func TestDockerImageRunsInheritedParameterToolOverStdio(t *testing.T) {
 	})
 }
 
+func TestDockerImageRunsStringEnumToolOverStdio(t *testing.T) {
+	assertDockerToolCalls(t, "getEnumCustomerOrders", writeStringEnumSpec, [2]containerToolCall{
+		{"optional enum query omitted", map[string]any{"customerId": "a/b"}, "GET /api/customers/a%2Fb/orders?token=a;b&mode=raw%2Fvalue"},
+		{"overridden enum query supplied", map[string]any{"customerId": "a/b", "filter": "next page"}, "GET /api/customers/a%2Fb/orders?token=a;b&mode=raw%2Fvalue&filter=next+page"},
+	},
+		map[string]any{"customerId": "unknown"},
+		map[string]any{"customerId": "a/b", "filter": "legacy"},
+		map[string]any{"customerId": nil},
+		map[string]any{"customerId": "a/b", "filter": nil},
+	)
+}
+
+func writeStringEnumSpec(t *testing.T, port int) string {
+	t.Helper()
+	document, err := os.ReadFile("../../testdata/string-enum-parameters.yaml")
+	if err != nil {
+		t.Fatalf("read string-enum fixture: %v", err)
+	}
+	content := strings.Replace(string(document), "https://example.test", fmt.Sprintf("https://host.docker.internal:%d", port), 1)
+	path := filepath.Join(t.TempDir(), "openapi.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write string-enum fixture: %v", err)
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatalf("resolve string-enum fixture: %v", err)
+	}
+	return absolute
+}
+
 func writeInheritedParameterSpec(t *testing.T, port int) string {
 	t.Helper()
 	document, err := os.ReadFile("../../testdata/inherited-parameters.yaml")
@@ -294,6 +324,7 @@ func assertDockerToolCalls(
 	operationID string,
 	writeSpec func(*testing.T, int) string,
 	testCalls [2]containerToolCall,
+	invalidCalls ...map[string]any,
 ) {
 	t.Helper()
 	image := strings.TrimSpace(os.Getenv("OASRELAY_IMAGE"))
@@ -367,6 +398,28 @@ func assertDockerToolCalls(
 	}
 	if strings.Contains(string(listedJSON), containerBearerToken) {
 		t.Fatal("bearer token leaked into MCP tools/list output")
+	}
+
+	for index, arguments := range invalidCalls {
+		t.Run(fmt.Sprintf("invalid_arguments_%d", index), func(t *testing.T) {
+			result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: operationID, Arguments: arguments})
+			if err != nil {
+				t.Fatalf("invalid tool call returned protocol error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatal("invalid arguments did not return a tool error")
+			}
+			resultJSON, err := json.Marshal(result)
+			if err != nil {
+				t.Fatalf("marshal invalid tool result: %v", err)
+			}
+			if strings.Contains(string(resultJSON), containerBearerToken) || strings.Contains(stderr.String(), containerBearerToken) {
+				t.Fatal("bearer token leaked into invalid-call output or stderr")
+			}
+			if got := calls.Load(); got != 0 {
+				t.Fatalf("upstream calls after invalid arguments = %d, want 0", got)
+			}
+		})
 	}
 
 	want := toolOutput{Status: http.StatusOK, ContentType: "application/json", Body: `{"items":[]}`}

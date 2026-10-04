@@ -73,7 +73,7 @@ func TestSelectGETRejectsUnsupportedSecondPathParameter(t *testing.T) {
 	tests := []struct{ name, parameter, message string }{
 		{"optional", strings.Replace(second, "required: true", "required: false", 1), "required"},
 		{"custom serialization", strings.Replace(second, "required: true", "required: true\n          style: label", 1), "default path serialization"},
-		{"constrained schema", second + "\n            enum: [active]", "plain primitive schema"},
+		{"constrained schema", second + "\n            pattern: '^active$'", "plain primitive schema"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

@@ -7,6 +7,7 @@ The current scope is intentionally narrow:
 - inspect one local OpenAPI 3.x YAML or JSON document;
 - select one `GET` operation by its exact `operationId`;
 - support no parameters, one or two primitive query parameters (each required or optional), one or two required primitive path parameters, or exactly one path plus one query parameter, with at most two effective parameters total after path-item inheritance and operation overrides;
+- allow a non-empty, unique string enum on supported string parameters;
 - expose that operation as exactly one MCP tool over stdio;
 - execute one bounded upstream HTTP request when the tool is called;
 - optionally attach one Bearer token from process environment to upstream requests;
@@ -137,7 +138,7 @@ Duplicate `(name, in)` entries within either source remain invalid. Distinct pat
 
 ### One primitive query parameter
 
-A supported query parameter must use `in: query` and may be declared on the path item or operation. It may be required or optional. Its effective schema must be a plain primitive `string`, `integer`, `number`, or `boolean` without additional constraints or custom serialization.
+A supported query parameter must use `in: query` and may be declared on the path item or operation. It may be required or optional. Its effective schema must be a primitive `string`, `integer`, `number`, or `boolean`. String parameters may declare the string enum described below; other constraints and custom serialization remain unsupported.
 
 For example:
 
@@ -263,7 +264,7 @@ The total effective parameter cap remains two. One path plus two query parameter
 
 ### One required primitive path parameter
 
-A supported path parameter may be declared on the path item or operation, must use `in: path`, be `required: true`, and use the default simple path serialization. Its name must match exactly one `{name}` placeholder in the operation path, and its effective schema must be a plain primitive `string`, `integer`, `number`, or `boolean` without additional constraints.
+A supported path parameter may be declared on the path item or operation, must use `in: path`, be `required: true`, and use the default simple path serialization. Its name must match exactly one `{name}` placeholder in the operation path, and its effective schema must be a primitive `string`, `integer`, `number`, or `boolean`. String parameters may declare the string enum described below; other constraints remain unsupported.
 
 For example:
 
@@ -399,6 +400,22 @@ Runtime limits are fixed in this slice:
 
 A non-2xx HTTP response preserves `status`, `contentType`, and `body`, while marking the MCP tool result as an error. Network, timeout, cancellation, response-read, and oversized-body failures are returned as tool execution errors.
 
+### String enum parameters
+
+Supported string path and query parameters may declare `enum`, including through internal schema references:
+
+```yaml
+schema:
+  type: string
+  enum: [active, archived]
+```
+
+The list must be non-empty and contain unique strings only. Matching is exact and case-sensitive; values are not trimmed or normalized. An empty string is valid only when explicitly listed. Optional query omission remains valid; explicit `null` remains invalid. MCP properties expose the enum, and binding checks membership before escaping or making an HTTP request.
+
+Inherited enums follow complete parameter overrides: an operation-level enum replaces the inherited list, and an override without an enum removes that restriction. The two-parameter cap and existing serialization rules still apply. Numeric and boolean enums, mixed or null members, duplicates, defaults, nullable schemas, and other schema constraints remain unsupported.
+
+See [the enum fixture](testdata/string-enum-parameters.yaml) for an inherited path enum and an overridden optional query enum.
+
 ## Optional Bearer authentication
 
 Set `OASRELAY_BEARER_TOKEN` when the upstream API requires a Bearer token:
@@ -492,6 +509,7 @@ Implemented:
 - exact selection of one supported `operationId`;
 - zero parameters, one or two effective primitive query parameters (each required or optional), one or two effective required primitive path parameters, or exactly one path plus one query parameter, with at most two parameters total;
 - path-item parameter inheritance with complete operation-level overrides by `(name, in)` and deterministic effective ordering;
+- unique non-empty string enums, exposed in MCP schemas and checked before upstream requests;
 - dynamic closed MCP input schema that preserves required versus optional query semantics;
 - query argument validation and URL binding;
 - two-query schema and binding with independent requiredness, declaration-order serialization, and optional omission;
@@ -512,7 +530,7 @@ Not implemented:
 - arbitrary multiple operation parameters, including three query parameters, three path parameters, one path plus two query parameters, or two paths plus a query;
 - optional path parameters;
 - header or cookie parameters;
-- arrays, objects, enums, unions, nullable schemas, schema constraints, schema defaults, or custom parameter serialization;
+- arrays, objects, non-string enums, empty or duplicate enums, unions, nullable schemas, other schema constraints, schema defaults, or custom parameter serialization;
 - OpenAPI `securitySchemes` processing;
 - OAuth/OIDC, API-key, Basic, arbitrary-header, token-refresh, or secret-store authentication;
 - request bodies or non-GET execution;

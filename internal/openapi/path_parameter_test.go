@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -118,7 +119,7 @@ paths:
 `)
 
 	got, err := SelectGET(path, "getCustomer")
-	if err != nil || len(got.PathParameters) != 1 || got.PathParameters[0] != (PathParameter{Name: "customerId", Type: "string"}) {
+	if err != nil || len(got.PathParameters) != 1 || !reflect.DeepEqual(got.PathParameters[0], PathParameter{Name: "customerId", Type: "string"}) {
 		t.Fatalf("selection = %#v, error = %v", got, err)
 	}
 }

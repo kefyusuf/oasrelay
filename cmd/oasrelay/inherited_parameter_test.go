@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"reflect"
 	"testing"
 
 	oasopenapi "github.com/kefyusuf/oasrelay/internal/openapi"
@@ -27,7 +28,7 @@ func TestRunServeAcceptsInheritedParametersWithOperationOverride(t *testing.T) {
 	if len(selected.PathParameters) != 1 || selected.PathParameters[0].Name != "customerId" {
 		t.Fatalf("inherited path = %#v", selected.PathParameters)
 	}
-	if len(selected.QueryParameters) != 1 || selected.QueryParameters[0] != (oasopenapi.QueryParameter{Name: "limit", Type: "integer", Optional: true}) {
+	if len(selected.QueryParameters) != 1 || !reflect.DeepEqual(selected.QueryParameters[0], oasopenapi.QueryParameter{Name: "limit", Type: "integer", Optional: true}) {
 		t.Fatalf("overridden query = %#v", selected.QueryParameters)
 	}
 }
