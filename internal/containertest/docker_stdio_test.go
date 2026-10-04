@@ -245,6 +245,32 @@ func TestDockerImageRunsOneToolOverStdio(t *testing.T) {
 }
 
 func TestDockerImageRunsTwoQueryToolOverStdio(t *testing.T) {
+	assertDockerToolCalls(t, "listCustomers", writeTwoQuerySpec, [2]containerToolCall{
+		{"optional query omitted", map[string]any{"limit": 25}, "GET /api/customers?limit=25"},
+		{"optional query supplied", map[string]any{"limit": 25, "cursor": "next page"}, "GET /api/customers?limit=25&cursor=next+page"},
+	})
+}
+
+func TestDockerImageRunsTwoPathToolOverStdio(t *testing.T) {
+	assertDockerToolCalls(t, "getCustomerOrder", writeTwoPathSpec, [2]containerToolCall{
+		{"normal path values", map[string]any{"customerId": "cus_123", "orderId": "42"}, "GET /api/customers/cus_123/orders/42"},
+		{"placeholder-shaped caller data and slash", map[string]any{"customerId": "{orderId}", "orderId": "a/b"}, "GET /api/customers/%7BorderId%7D/orders/a%2Fb"},
+	})
+}
+
+type containerToolCall struct {
+	name      string
+	arguments map[string]any
+	request   string
+}
+
+func assertDockerToolCalls(
+	t *testing.T,
+	operationID string,
+	writeSpec func(*testing.T, int) string,
+	testCalls [2]containerToolCall,
+) {
+	t.Helper()
 	image := strings.TrimSpace(os.Getenv("OASRELAY_IMAGE"))
 	if image == "" {
 		t.Fatal("OASRELAY_IMAGE must name the prebuilt image under test")
@@ -273,7 +299,7 @@ func TestDockerImageRunsTwoQueryToolOverStdio(t *testing.T) {
 		_ = upstream.Shutdown(ctx)
 	})
 
-	specPath := writeTwoQuerySpec(t, listener.Addr().(*net.TCPAddr).Port)
+	specPath := writeSpec(t, listener.Addr().(*net.TCPAddr).Port)
 	command := exec.Command(
 		"docker", "run", "--rm", "-i",
 		"-e", "OASRELAY_BEARER_TOKEN="+containerBearerToken,
@@ -281,14 +307,14 @@ func TestDockerImageRunsTwoQueryToolOverStdio(t *testing.T) {
 		"--add-host", "host.docker.internal:host-gateway",
 		"--mount", fmt.Sprintf("type=bind,src=%s,dst=/work/openapi.yaml,readonly", specPath),
 		"--mount", fmt.Sprintf("type=bind,src=%s,dst=/work/oasrelay-test-ca.pem,readonly", caPath),
-		image, "serve", "--operation-id", "listCustomers", "/work/openapi.yaml",
+		image, "serve", "--operation-id", operationID, "/work/openapi.yaml",
 	)
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	client := mcp.NewClient(
-		&mcp.Implementation{Name: "oasrelay-two-query-container-test", Version: "0.0.0-test"}, nil,
+		&mcp.Implementation{Name: "oasrelay-container-test", Version: "0.0.0-test"}, nil,
 	)
 	session, err := client.Connect(ctx, &mcp.CommandTransport{
 		Command: command, TerminateDuration: 2 * time.Second,
@@ -307,8 +333,8 @@ func TestDockerImageRunsTwoQueryToolOverStdio(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list container tools: %v; stderr = %q", err, stderr.String())
 	}
-	if len(listed.Tools) != 1 || listed.Tools[0].Name != "listCustomers" {
-		t.Fatalf("listed tools = %#v, want exactly listCustomers", listed.Tools)
+	if len(listed.Tools) != 1 || listed.Tools[0].Name != operationID {
+		t.Fatalf("listed tools = %#v, want exactly %s", listed.Tools, operationID)
 	}
 	listedJSON, err := json.Marshal(listed)
 	if err != nil {
@@ -319,16 +345,9 @@ func TestDockerImageRunsTwoQueryToolOverStdio(t *testing.T) {
 	}
 
 	want := toolOutput{Status: http.StatusOK, ContentType: "application/json", Body: `{"items":[]}`}
-	for _, tc := range []struct {
-		name      string
-		arguments map[string]any
-		request   string
-	}{
-		{"optional query omitted", map[string]any{"limit": 25}, "GET /api/customers?limit=25"},
-		{"optional query supplied", map[string]any{"limit": 25, "cursor": "next page"}, "GET /api/customers?limit=25&cursor=next+page"},
-	} {
+	for _, tc := range testCalls {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "listCustomers", Arguments: tc.arguments})
+			result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: operationID, Arguments: tc.arguments})
 			if err != nil {
 				t.Fatalf("call container tool: %v; stderr = %q", err, stderr.String())
 			}
@@ -404,6 +423,44 @@ paths:
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		t.Fatalf("resolve two-query OpenAPI fixture path: %v", err)
+	}
+	return absolute
+}
+
+func writeTwoPathSpec(t *testing.T, port int) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "openapi.yaml")
+	content := fmt.Sprintf(`openapi: 3.0.3
+info:
+  title: Two Path Docker Acceptance API
+  version: 1.0.0
+servers:
+  - url: https://host.docker.internal:%d/api
+paths:
+  /customers/{customerId}/orders/{orderId}:
+    get:
+      operationId: getCustomerOrder
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Customer order
+`, port)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write two-path OpenAPI fixture: %v", err)
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatalf("resolve two-path OpenAPI fixture path: %v", err)
 	}
 	return absolute
 }

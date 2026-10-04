@@ -64,10 +64,10 @@ paths:
 	if len(selected.QueryParameters) != 0 {
 		t.Fatalf("selected QueryParameterss = %#v, want none", selected.QueryParameters)
 	}
-	if selected.PathParameter == nil ||
-		selected.PathParameter.Name != "customerId" ||
-		selected.PathParameter.Type != "string" {
-		t.Fatalf("selected PathParameter = %#v", selected.PathParameter)
+	if len(selected.PathParameters) != 1 ||
+		selected.PathParameters[0].Name != "customerId" ||
+		selected.PathParameters[0].Type != "string" {
+		t.Fatalf("selected PathParameters = %#v", selected.PathParameters)
 	}
 	if selected.Endpoint != "https://example.test/api/customers/%7BcustomerId%7D" {
 		t.Fatalf("selected Endpoint = %q", selected.Endpoint)
