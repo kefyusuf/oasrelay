@@ -327,7 +327,7 @@ func TestSelectGETRejectsUnsupportedParameterShapes(t *testing.T) {
 			message: "plain primitive schema",
 		},
 		{
-			name: "enum schema",
+			name: "pattern schema",
 			parameters: `    get:
       operationId: listCustomers
       parameters:
@@ -336,7 +336,7 @@ func TestSelectGETRejectsUnsupportedParameterShapes(t *testing.T) {
           required: true
           schema:
             type: string
-            enum: [active, disabled]`,
+            pattern: '^(active|disabled)$'`,
 			message: "plain primitive schema",
 		},
 		{
