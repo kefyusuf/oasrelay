@@ -149,7 +149,7 @@ func TestSelectGETRejectsUnsupportedCombinedParameterShapes(t *testing.T) {
           required: true
           schema:
             type: string`,
-			message: "supports at most two operation-level parameters",
+			message: "supports at most two effective parameters",
 		},
 		{
 			name:  "same MCP argument name across locations",

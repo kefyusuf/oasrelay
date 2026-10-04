@@ -38,8 +38,11 @@ func TestSelectGETMergesInheritedParameters(t *testing.T) {
 		{"mixed sources", "/{id}", openapi3.Parameters{path("id", "string")}, openapi3.Parameters{query("limit", "integer", false)}, []QueryParameter{{"limit", "integer", true}}, []PathParameter{{"id", "string"}}},
 		{"inherited queries independent requiredness", "/items", openapi3.Parameters{query("first", "string", true), query("second", "boolean", false)}, nil, []QueryParameter{{"first", "string", false}, {"second", "boolean", true}}, nil},
 		{"query override type and requiredness", "/items", openapi3.Parameters{query("first", "string", true)}, openapi3.Parameters{query("first", "integer", false), query("second", "boolean", true)}, []QueryParameter{{"first", "integer", true}, {"second", "boolean", false}}, nil},
+		{"query override makes required", "/items", openapi3.Parameters{query("first", "string", false)}, openapi3.Parameters{query("first", "boolean", true)}, []QueryParameter{{"first", "boolean", false}}, nil},
+		{"operation-only queries retain order", "/items", nil, openapi3.Parameters{query("second", "boolean", false), query("first", "integer", true)}, []QueryParameter{{"second", "boolean", true}, {"first", "integer", false}}, nil},
 		{"reverse overrides retain slots", "/items", openapi3.Parameters{query("first", "string", false), query("second", "string", true)}, openapi3.Parameters{query("second", "boolean", false), query("first", "integer", true)}, []QueryParameter{{"first", "integer", false}, {"second", "boolean", true}}, nil},
 		{"path override type", "/{id}", openapi3.Parameters{path("id", "string")}, openapi3.Parameters{path("id", "integer")}, nil, []PathParameter{{"id", "integer"}}},
+		{"reverse path overrides retain slots", "/{first}/{second}", openapi3.Parameters{path("second", "string"), path("first", "string")}, openapi3.Parameters{path("first", "boolean"), path("second", "integer")}, nil, []PathParameter{{"second", "integer"}, {"first", "boolean"}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -70,6 +73,8 @@ func TestSelectGETRejectsInvalidInheritedParameters(t *testing.T) {
 	constrained := inheritanceParameter("q", "query", "string", true)
 	constrained.Value.Schema.Value.Enum = []any{"active"}
 	optionalPath := inheritanceParameter("id", "path", "string", false)
+	customPath := inheritanceParameter("id", "path", "string", true)
+	customPath.Value.Style = "label"
 	tests := []struct {
 		name, route         string
 		inherited, declared openapi3.Parameters
@@ -85,6 +90,9 @@ func TestSelectGETRejectsInvalidInheritedParameters(t *testing.T) {
 		{"header", "/items", openapi3.Parameters{inheritanceParameter("X-Token", "header", "string", true)}, nil, "query and path parameters only"},
 		{"constrained schema", "/items", openapi3.Parameters{constrained}, nil, "plain primitive schema"},
 		{"custom serialization", "/items", openapi3.Parameters{custom}, nil, "default query serialization"},
+		{"custom path serialization", "/{id}", openapi3.Parameters{customPath}, nil, "default path serialization"},
+		{"undeclared placeholder", "/{id}/{other}", openapi3.Parameters{id}, nil, "additional path placeholders"},
+		{"repeated placeholder", "/{id}/{id}", openapi3.Parameters{id}, nil, "exactly one path placeholder"},
 		{"path requiredness override", "/{id}", openapi3.Parameters{id}, openapi3.Parameters{optionalPath}, "must be required"},
 	}
 	for _, test := range tests {

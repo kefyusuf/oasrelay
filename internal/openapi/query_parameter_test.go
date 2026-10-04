@@ -310,7 +310,7 @@ func TestSelectGETRejectsUnsupportedParameterShapes(t *testing.T) {
           required: false
           schema:
             type: string`,
-			message: "supports at most two operation-level parameters",
+			message: "supports at most two effective parameters",
 		},
 		{
 			name: "array schema",

@@ -123,7 +123,7 @@ func TestSelectGETRejectsMoreThanTwoParametersWithTwoPaths(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			path := writeSelectionSpec(t, twoPathSelectionDocument(test.route, base+"\n"+test.extra))
 			_, err := SelectGET(path, "getOrder")
-			if err == nil || !strings.Contains(err.Error(), "at most two operation-level parameters") {
+			if err == nil || !strings.Contains(err.Error(), "at most two effective parameters") {
 				t.Fatalf("SelectGET() error = %v, want total-parameter-cap rejection", err)
 			}
 		})
