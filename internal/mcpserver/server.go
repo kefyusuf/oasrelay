@@ -41,11 +41,18 @@ func New(operation oasopenapi.SelectedOperation, client *http.Client) (*mcp.Serv
 			len(operation.QueryParameters),
 		)
 	}
-	if len(operation.PathParameters) > 1 {
-		return nil, fmt.Errorf("this runtime supports at most one path parameter")
-	}
 	if len(operation.PathParameters) != 0 && len(operation.QueryParameters) > 1 {
 		return nil, fmt.Errorf("operation may expose a path with at most one query parameter")
+	}
+	if len(operation.PathParameters)+len(operation.QueryParameters) > 2 {
+		return nil, fmt.Errorf("this runtime supports at most two operation parameters")
+	}
+	pathNames := make(map[string]struct{}, len(operation.PathParameters))
+	for _, parameter := range operation.PathParameters {
+		if _, exists := pathNames[parameter.Name]; exists {
+			return nil, fmt.Errorf("duplicate path parameter name %q", parameter.Name)
+		}
+		pathNames[parameter.Name] = struct{}{}
 	}
 	queryNames := make(map[string]struct{}, len(operation.QueryParameters))
 	for _, parameter := range operation.QueryParameters {
@@ -53,7 +60,7 @@ func New(operation oasopenapi.SelectedOperation, client *http.Client) (*mcp.Serv
 			return nil, fmt.Errorf("duplicate query parameter name %q", parameter.Name)
 		}
 		queryNames[parameter.Name] = struct{}{}
-		if len(operation.PathParameters) != 0 && parameter.Name == operation.PathParameters[0].Name {
+		if _, exists := pathNames[parameter.Name]; exists {
 			return nil, fmt.Errorf(
 				"path and query parameters share MCP input name %q",
 				parameter.Name,
@@ -175,9 +182,9 @@ func bindOperationArguments(
 	case len(operation.PathParameters) != 0 && len(operation.QueryParameters) != 0:
 		return bindPathAndQueryParameters(operation, input)
 	case len(operation.PathParameters) != 0:
-		return bindPathParameter(
+		return bindPathParameters(
 			operation.Endpoint,
-			&operation.PathParameters[0],
+			operation.PathParameters,
 			input,
 		)
 	default:
@@ -320,37 +327,52 @@ func bindPathParameter(
 	parameter *oasopenapi.PathParameter,
 	input map[string]json.RawMessage,
 ) (string, error) {
-	if len(input) != 1 {
-		return "", fmt.Errorf("tool requires exactly path parameter %q", parameter.Name)
+	if parameter == nil {
+		return "", fmt.Errorf("path parameter is required")
 	}
-	raw, ok := input[parameter.Name]
-	if !ok {
-		return "", fmt.Errorf("required path parameter %q is missing", parameter.Name)
-	}
+	return bindPathParameters(endpoint, []oasopenapi.PathParameter{*parameter}, input)
+}
 
-	value, err := primitiveQueryValue(parameter.Type, raw)
-	if err != nil {
-		return "", fmt.Errorf("path parameter %q: %w", parameter.Name, err)
+func bindPathParameters(
+	endpoint string,
+	parameters []oasopenapi.PathParameter,
+	input map[string]json.RawMessage,
+) (string, error) {
+	if len(parameters) == 0 || len(parameters) > 2 || len(input) != len(parameters) {
+		return "", fmt.Errorf("tool requires exactly its declared path parameters (one or two)")
 	}
-
 	parsed, err := url.Parse(endpoint)
 	if err != nil {
 		return "", fmt.Errorf("parse endpoint: %w", err)
 	}
-
-	placeholder := "{" + parameter.Name + "}"
-	if strings.Count(parsed.Path, placeholder) != 1 {
-		return "", fmt.Errorf("path parameter %q placeholder is missing from endpoint", parameter.Name)
-	}
-
 	escapedPath := parsed.EscapedPath()
-	escapedPlaceholder := url.PathEscape(placeholder)
-	if strings.Count(escapedPath, escapedPlaceholder) != 1 {
-		return "", fmt.Errorf("path parameter %q escaped placeholder is missing from endpoint", parameter.Name)
+	decodedPairs := make([]string, 0, 2*len(parameters))
+	escapedPairs := make([]string, 0, 2*len(parameters))
+	selected := make(map[string]struct{}, len(parameters))
+	for _, parameter := range parameters {
+		if _, exists := selected[parameter.Name]; exists {
+			return "", fmt.Errorf("duplicate path parameter name %q", parameter.Name)
+		}
+		selected[parameter.Name] = struct{}{}
+		raw, ok := input[parameter.Name]
+		if !ok {
+			return "", fmt.Errorf("required path parameter %q is missing", parameter.Name)
+		}
+		value, err := primitiveQueryValue(parameter.Type, raw)
+		if err != nil {
+			return "", fmt.Errorf("path parameter %q: %w", parameter.Name, err)
+		}
+		placeholder := "{" + parameter.Name + "}"
+		escapedPlaceholder := url.PathEscape(placeholder)
+		if strings.Count(parsed.Path, placeholder) != 1 || strings.Count(escapedPath, escapedPlaceholder) != 1 {
+			return "", fmt.Errorf("path parameter %q placeholder must occur exactly once in endpoint", parameter.Name)
+		}
+		decodedPairs = append(decodedPairs, placeholder, value)
+		escapedPairs = append(escapedPairs, escapedPlaceholder, escapePathSegment(value))
 	}
-
-	parsed.Path = strings.Replace(parsed.Path, placeholder, value, 1)
-	parsed.RawPath = strings.Replace(escapedPath, escapedPlaceholder, escapePathSegment(value), 1)
+	// Replacers scan only the original template, never substituted caller data.
+	parsed.Path = strings.NewReplacer(decodedPairs...).Replace(parsed.Path)
+	parsed.RawPath = strings.NewReplacer(escapedPairs...).Replace(escapedPath)
 	return parsed.String(), nil
 }
 
