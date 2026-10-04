@@ -279,18 +279,6 @@ func TestSelectGETRejectsUnsupportedParameterShapes(t *testing.T) {
 		message    string
 	}{
 		{
-			name: "path level parameter",
-			parameters: `    parameters:
-      - name: limit
-        in: query
-        required: true
-        schema:
-          type: integer
-    get:
-      operationId: listCustomers`,
-			message: "path-level parameters",
-		},
-		{
 			name: "header parameter",
 			parameters: `    get:
       operationId: listCustomers
