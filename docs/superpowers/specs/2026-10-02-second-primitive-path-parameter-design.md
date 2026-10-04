@@ -37,3 +37,16 @@ Execute on `feat/second-primitive-path-parameter` using test-first changes:
 5. Run required Go/module/format checks, independent source review, and final Docker CI. Commit and create a reviewable PR; do not merge as part of this feature implementation.
 
 The current host has no Docker executable. Real container verification uses the existing GitHub Actions Docker job; a container-tagged compile check is not container execution.
+
+## Execution Checkpoint — 2026-10-04
+
+Implementation is complete on `feat/second-primitive-path-parameter`, based on `main` commit `0939ea6`. No merge has been performed for this feature.
+
+- Model migration: compilation RED observed when migrated tests requested the missing `PathParameters` field; existing Go suite GREEN after `a7b6f2b`.
+- MCP behavior RED: `a152400`, with new two-path schema/execution tests rejected by the existing one-path guard. GREEN: `ae084b2`, including non-recursive placeholder substitution and pre-network argument validation.
+- Selector/CLI behavior RED: `be2dd32`, rejected by the existing one-path guard. GREEN: `5be7ee6`, including reversed declaration order, all four primitive types in either position, placeholder/name validation, and the unchanged total cap.
+- Final local `go test ./...`, `go vet ./...`, inspect smoke, container-tagged compilation/vet, and module consistency: passed.
+- Independent source review of production and unit tests: no actionable correctness or regression findings; that reviewer did not rerun tests or review container execution.
+- Docker acceptance now includes a two-path tool with normal values and placeholder-shaped caller data plus an escaped slash. Existing path-plus-query and two-query acceptance remain present.
+
+Remaining verification: create the PR and record real Docker CI evidence before declaring container acceptance passed. The original execution steps above describe the completed implementation sequence, not remaining feature work. Before continuation, check current branch, HEAD, working-tree changes, PR state, and CI on the exact head.
