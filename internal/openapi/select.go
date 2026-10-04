@@ -65,7 +65,7 @@ func SelectParameterlessGET(path, operationID string) (SelectedOperation, error)
 
 // SelectGET loads one local document and selects the exact operationId when it
 // represents a parameterless GET, a GET with up to two supported operation-level
-// query parameters, one required path parameter, or exactly one path plus one query.
+// query parameters, up to two required path parameters, or one path plus one query.
 func SelectGET(path, operationID string) (SelectedOperation, error) {
 	document, err := loadDocument(path)
 	if err != nil {
@@ -155,11 +155,11 @@ func selectGETOperation(
 		)
 	}
 
-	queryParameters, pathParameter, err := supportedOperationParameters(operationID, route, operation.Parameters)
+	queryParameters, pathParameters, err := supportedOperationParameters(operationID, route, operation.Parameters)
 	if err != nil {
 		return SelectedOperation{}, err
 	}
-	return buildSelectedOperation(document, route, method, item, operation, queryParameters, pathParameter)
+	return buildSelectedOperation(document, route, method, item, operation, queryParameters, pathParameters)
 }
 
 func supportedOperationParameters(
@@ -167,7 +167,7 @@ func supportedOperationParameters(
 	parameters openapi3.Parameters,
 ) ([]QueryParameter, []PathParameter, error) {
 	queryRaw := make([]*openapi3.Parameter, 0, 2)
-	var pathRaw *openapi3.Parameter
+	pathRaw := make([]*openapi3.Parameter, 0, 2)
 
 	for _, parameterRef := range parameters {
 		if parameterRef == nil || parameterRef.Value == nil {
@@ -198,13 +198,18 @@ func supportedOperationParameters(
 			queryRaw = append(queryRaw, parameter)
 
 		case openapi3.ParameterInPath:
-			if pathRaw != nil {
+			if len(pathRaw) == 2 {
 				return nil, nil, fmt.Errorf(
-					"operationId %q supports at most one path parameter",
+					"operationId %q supports at most two path parameters",
 					operationID,
 				)
 			}
-			pathRaw = parameter
+			for _, existing := range pathRaw {
+				if existing.Name == parameter.Name {
+					return nil, nil, fmt.Errorf("operationId %q has duplicate path parameter name %q", operationID, parameter.Name)
+				}
+			}
+			pathRaw = append(pathRaw, parameter)
 
 		default:
 			return nil, nil, fmt.Errorf(
@@ -216,9 +221,12 @@ func supportedOperationParameters(
 		}
 	}
 
-	if pathRaw != nil {
+	if len(pathRaw)+len(queryRaw) > 2 {
+		return nil, nil, fmt.Errorf("operationId %q supports at most two operation-level parameters", operationID)
+	}
+	for _, path := range pathRaw {
 		for _, query := range queryRaw {
-			if query.Name == pathRaw.Name {
+			if query.Name == path.Name {
 				return nil, nil, fmt.Errorf(
 					"operationId %q path and query parameters share parameter name %q; MCP input names must be unique",
 					operationID,
@@ -237,13 +245,18 @@ func supportedOperationParameters(
 		queryParameters = append(queryParameters, *parameter)
 	}
 
-	var pathParameters []PathParameter
-	if pathRaw != nil {
-		parameter, err := supportedPathParameter(operationID, route, pathRaw)
+	pathParameters := make([]PathParameter, 0, len(pathRaw))
+	remainingRoute := route
+	for _, raw := range pathRaw {
+		parameter, err := supportedPathParameter(operationID, route, raw)
 		if err != nil {
 			return nil, nil, err
 		}
 		pathParameters = append(pathParameters, *parameter)
+		remainingRoute = strings.Replace(remainingRoute, "{"+parameter.Name+"}", "", 1)
+	}
+	if strings.ContainsAny(remainingRoute, "{}") {
+		return nil, nil, fmt.Errorf("operationId %q route contains additional path placeholders", operationID)
 	}
 
 	return queryParameters, pathParameters, nil
@@ -330,14 +343,6 @@ func supportedPathParameter(
 	if strings.Count(route, placeholder) != 1 {
 		return nil, fmt.Errorf(
 			"operationId %q path parameter %q must match exactly one path placeholder",
-			operationID,
-			parameter.Name,
-		)
-	}
-	remainingRoute := strings.Replace(route, placeholder, "", 1)
-	if strings.ContainsAny(remainingRoute, "{}") {
-		return nil, fmt.Errorf(
-			"operationId %q path parameter %q route contains additional path placeholders; this version supports exactly one path placeholder",
 			operationID,
 			parameter.Name,
 		)
