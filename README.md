@@ -68,6 +68,20 @@ The `inspect` command:
 - reports a warning when a `GET` operation has no `operationId`;
 - returns exit code `1` for document errors and `2` for command usage errors.
 
+### Explain GET selection
+
+To see whether each discovered GET operation passes the runtime's static selection rules:
+
+```bash
+go run ./cmd/oasrelay inspect --diagnostics ./openapi.yaml
+```
+
+The report adds `Selectable: yes` or `Selectable: no` to each GET. Rejected operations show the first selection error, for example an unsupported parameter schema, more than two effective parameters, or a missing usable server URL. Diagnostics reuse the same selector as `serve`, including parameter inheritance, overrides, and string enums.
+
+Diagnostics do not start MCP, contact upstream servers, or read authentication credentials. `Selectable: yes` confirms static selection only; it does not confirm upstream availability or authentication readiness. Rejected operations remain listed, and a valid document still exits with code `0`. Document errors exit with `1`; usage errors exit with `2`.
+
+Flags must precede the file path. Default `inspect` and `--diagnostics=false` keep the original report. Use `--` before a file path beginning with `-`.
+
 ## Serve one MCP tool
 
 ```bash
