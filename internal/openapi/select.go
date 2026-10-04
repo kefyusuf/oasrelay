@@ -64,8 +64,8 @@ func SelectParameterlessGET(path, operationID string) (SelectedOperation, error)
 }
 
 // SelectGET loads one local document and selects the exact operationId when it
-// represents a parameterless GET, a GET with up to two supported operation-level
-// query parameters, up to two required path parameters, or one path plus one query.
+// represents a GET with up to two supported effective parameters after path-item
+// inheritance and operation overrides: query, required path, or one of each.
 func SelectGET(path, operationID string) (SelectedOperation, error) {
 	document, err := loadDocument(path)
 	if err != nil {
@@ -135,17 +135,15 @@ func selectGETOperation(
 			method,
 		)
 	}
-	if len(item.Parameters) != 0 {
-		return SelectedOperation{}, fmt.Errorf(
-			"operationId %q has path-level parameters; this version does not support path-level parameters",
-			operationID,
-		)
+	parameters, err := effectiveParameters(operationID, item.Parameters, operation.Parameters)
+	if err != nil {
+		return SelectedOperation{}, err
 	}
-	if len(operation.Parameters) > 2 {
+	if len(parameters) > 2 {
 		return SelectedOperation{}, fmt.Errorf(
-			"operationId %q has %d operation parameters; this version supports at most two operation-level parameters",
+			"operationId %q has %d effective parameters; this version supports at most two effective parameters",
 			operationID,
-			len(operation.Parameters),
+			len(parameters),
 		)
 	}
 	if operation.RequestBody != nil {
@@ -155,11 +153,42 @@ func selectGETOperation(
 		)
 	}
 
-	queryParameters, pathParameters, err := supportedOperationParameters(operationID, route, operation.Parameters)
+	queryParameters, pathParameters, err := supportedOperationParameters(operationID, route, parameters)
 	if err != nil {
 		return SelectedOperation{}, err
 	}
 	return buildSelectedOperation(document, route, method, item, operation, queryParameters, pathParameters)
+}
+
+// effectiveParameters validates each declaration source before merging by the
+// OpenAPI (name, in) identity. Overrides retain the inherited declaration slot.
+func effectiveParameters(operationID string, inherited, declared openapi3.Parameters) (openapi3.Parameters, error) {
+	type identity struct{ name, location string }
+	parameters := make(openapi3.Parameters, 0, len(inherited)+len(declared))
+	slots := make(map[identity]int, len(inherited)+len(declared))
+	for _, source := range []struct {
+		name       string
+		parameters openapi3.Parameters
+	}{{"path-item", inherited}, {"operation", declared}} {
+		seen := make(map[identity]bool, len(source.parameters))
+		for _, ref := range source.parameters {
+			if ref == nil || ref.Value == nil {
+				return nil, fmt.Errorf("operationId %q has an unresolved %s parameter; this version requires resolved parameters", operationID, source.name)
+			}
+			key := identity{ref.Value.Name, ref.Value.In}
+			if seen[key] {
+				return nil, fmt.Errorf("operationId %q has duplicate %s parameter name %q in %s", operationID, source.name, key.name, key.location)
+			}
+			seen[key] = true
+			if slot, exists := slots[key]; exists {
+				parameters[slot] = ref
+			} else {
+				slots[key] = len(parameters)
+				parameters = append(parameters, ref)
+			}
+		}
+	}
+	return parameters, nil
 }
 
 func supportedOperationParameters(
@@ -222,7 +251,7 @@ func supportedOperationParameters(
 	}
 
 	if len(pathRaw)+len(queryRaw) > 2 {
-		return nil, nil, fmt.Errorf("operationId %q supports at most two operation-level parameters", operationID)
+		return nil, nil, fmt.Errorf("operationId %q supports at most two effective parameters", operationID)
 	}
 	for _, path := range pathRaw {
 		for _, query := range queryRaw {

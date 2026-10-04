@@ -279,18 +279,6 @@ func TestSelectGETRejectsUnsupportedParameterShapes(t *testing.T) {
 		message    string
 	}{
 		{
-			name: "path level parameter",
-			parameters: `    parameters:
-      - name: limit
-        in: query
-        required: true
-        schema:
-          type: integer
-    get:
-      operationId: listCustomers`,
-			message: "path-level parameters",
-		},
-		{
 			name: "header parameter",
 			parameters: `    get:
       operationId: listCustomers
@@ -322,7 +310,7 @@ func TestSelectGETRejectsUnsupportedParameterShapes(t *testing.T) {
           required: false
           schema:
             type: string`,
-			message: "supports at most two operation-level parameters",
+			message: "supports at most two effective parameters",
 		},
 		{
 			name: "array schema",

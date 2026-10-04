@@ -258,6 +258,31 @@ func TestDockerImageRunsTwoPathToolOverStdio(t *testing.T) {
 	})
 }
 
+func TestDockerImageRunsInheritedParameterToolOverStdio(t *testing.T) {
+	assertDockerToolCalls(t, "getCustomerOrders", writeInheritedParameterSpec, [2]containerToolCall{
+		{"inherited path and overridden query omitted", map[string]any{"customerId": "a/b"}, "GET /api/customers/a%2Fb/orders?token=a;b"},
+		{"overridden integer query supplied", map[string]any{"customerId": "a/b", "limit": json.Number("25e0")}, "GET /api/customers/a%2Fb/orders?token=a;b&limit=25"},
+	})
+}
+
+func writeInheritedParameterSpec(t *testing.T, port int) string {
+	t.Helper()
+	document, err := os.ReadFile("../../testdata/inherited-parameters.yaml")
+	if err != nil {
+		t.Fatalf("read inherited-parameter fixture: %v", err)
+	}
+	content := strings.Replace(string(document), "https://example.test", fmt.Sprintf("https://host.docker.internal:%d", port), 1)
+	path := filepath.Join(t.TempDir(), "openapi.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write inherited-parameter fixture: %v", err)
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatalf("resolve inherited-parameter fixture: %v", err)
+	}
+	return absolute
+}
+
 type containerToolCall struct {
 	name      string
 	arguments map[string]any

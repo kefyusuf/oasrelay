@@ -1,0 +1,30 @@
+openapi: 3.0.3
+info:
+  title: Inherited Parameters API
+  version: 1.0.0
+servers:
+  - url: https://example.test/api?token=a;b
+paths:
+  /customers/{customerId}/orders:
+    parameters:
+      - name: customerId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getCustomerOrders
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Customer orders

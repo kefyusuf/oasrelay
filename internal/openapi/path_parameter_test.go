@@ -95,7 +95,7 @@ paths:
 	}
 }
 
-func TestSelectGETRejectsPathItemLevelPathParameter(t *testing.T) {
+func TestSelectGETAcceptsPathItemLevelPathParameter(t *testing.T) {
 	path := writeSelectionSpec(t, `openapi: 3.0.3
 info:
   title: Path API
@@ -117,9 +117,9 @@ paths:
           description: Customer
 `)
 
-	_, err := SelectGET(path, "getCustomer")
-	if err == nil || !strings.Contains(err.Error(), "path-level parameters") {
-		t.Fatalf("error = %v, want path-level parameter rejection", err)
+	got, err := SelectGET(path, "getCustomer")
+	if err != nil || len(got.PathParameters) != 1 || got.PathParameters[0] != (PathParameter{Name: "customerId", Type: "string"}) {
+		t.Fatalf("selection = %#v, error = %v", got, err)
 	}
 }
 
