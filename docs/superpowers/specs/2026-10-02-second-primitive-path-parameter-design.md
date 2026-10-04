@@ -49,4 +49,6 @@ Implementation is complete on `feat/second-primitive-path-parameter`, based on `
 - Independent source review of production and unit tests: no actionable correctness or regression findings; that reviewer did not rerun tests or review container execution.
 - Docker acceptance now includes a two-path tool with normal values and placeholder-shaped caller data plus an escaped slash. Existing path-plus-query and two-query acceptance remain present.
 
-Remaining verification: create the PR and record real Docker CI evidence before declaring container acceptance passed. The original execution steps above describe the completed implementation sequence, not remaining feature work. Before continuation, check current branch, HEAD, working-tree changes, PR state, and CI on the exact head.
+Real container acceptance and the complete CI verification passed on `4889881ecfff95ceff7baec17311efcb46613f12` in [run 37196516089](https://github.com/kefyusuf/oasrelay/actions/runs/37196516089). [PR #20](https://github.com/kefyusuf/oasrelay/pull/20) contains this feature. Remaining work is maintainer review and merge; no additional feature implementation is pending.
+
+The original execution steps above describe the completed implementation sequence, not remaining feature work. Before continuation, check current branch, HEAD, working-tree changes, PR state, and CI on the exact head. The prior two-query milestone (PR #19) is merged into `main`; its older pre-merge checkpoint is historical.
