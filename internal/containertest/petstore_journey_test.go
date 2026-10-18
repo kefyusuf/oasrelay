@@ -25,6 +25,8 @@ func TestDockerPetstoreInspectToServe(t *testing.T) {
 	)
 }
 
+// writePetstoreSpec preserves the pinned Petstore operations and rewrites only
+// the server URL to a local TLS fixture for offline container acceptance.
 func writePetstoreSpec(t *testing.T, port int) string {
 	t.Helper()
 
